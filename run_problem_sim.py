@@ -1,10 +1,12 @@
 import copy
 import numpy as np
 import pickle
-from mpi4py import MPI
 import problem_sim_general as sim
 import matplotlib.pyplot as plt
 from organism import Organism
+from multiprocessing import Pool
+import multiprocessing as mp
+import numpy as np
 
 # Ecosystem and GA work
 
@@ -38,9 +40,7 @@ class Ecosystem():
 
     def generation(self, repeats=1, keep_best=True):
         self.rewards = [self.scoring_function(x, y) for x, y in pairwise(self.population)]
-        # print("Before flatten, ", self.rewards)
         self.rewards = [item for sublist in self.rewards for item in sublist]
-        # print("After flatten, ", self.rewards)
 
         self.population = [self.population[x] for x in np.argsort(self.rewards)[::-1]]
         self.population_size = len(self.population)
@@ -48,79 +48,65 @@ class Ecosystem():
         new_population = []
         for i in range(self.population_size):
             parent_1_idx = i % self.holdout
-            # print(parent_1_idx)
 
             if self.mating:
                 parent_2_idx = min(self.population_size - 1, int(np.random.exponential(self.holdout)))
             else:
                 parent_2_idx = parent_1_idx
+
             offspring = self.population[parent_1_idx].mate(self.population[parent_2_idx])
             new_population.append(offspring)
+
         if keep_best:
             new_population[-1] = self.population[0]  # Ensure best organism survives
         self.population = new_population
-        # return -1 * max(rewards)
 
-    def mpi_generation(self, repeats=1, keep_best=True):
-
+    def mp_generation(_self_, _repeats_=1, _keep_best_=True):
         # make the population and score stuff array
-        population = np.array(self.population)  # parameters to send to simulate_and_evaluate
+        population = np.array(_self_.population)  # parameters to send to simulate_and_evaluate_
+
         n = population.shape[0]
+        num_processes = 4  # number of processes to use
 
+        # create a pool of worker processes
+        pool = Pool(processes=num_processes)
 
-        count = n // size  # number of catchments for each process to analyze
-        remainder = n % size  # extra catchments if n is not a multiple of size
+        # split the population into chunks for each process
+        chunk_size = n // num_processes
+        population_chunks = [population[i:i + chunk_size] for i in range(0, n, chunk_size)]
 
-        if rank < remainder:  # processes with rank < remainder analyze one extra catchment
-            start = rank * (count + 1)  # index of first catchment to analyze
-            stop = start + count + 1  # index of last catchment to analyze
-        else:
-            start = rank * count + remainder
-            stop = start + count
+        # run the scoring function for each chunk of the population in parallel
+        results = pool.starmap(_self_.scoring_function, [(x, y) for chunk in population_chunks for x, y in pairwise(chunk)])
 
-        local_pop = population[start:stop]  # get the portion of the array to be analyzed by each rank
-        # run the function for each parameter set and rank
-        local_results = [self.scoring_function(x, y) for x, y in pairwise(local_pop)]
-        local_results = [item for sublist in local_results for item in sublist]
+        # flatten the results list
+        final_results = [item for sublist in results for item in sublist]
+        print (final_results)
 
+        _self_.rewards = [x.score for x in _self_.population]
+        _self_.population = [_self_.population[x] for x in np.argsort(_self_.rewards)[::-1]]
+        _self_.population_size = len(_self_.population)
 
-        if rank > 0:
-            comm.isend(local_results, dest=0, tag=14)  # send results to process 0
-        else:
-            final_results = np.copy(local_results)  # initialize final results with results from process 0
-            for i in range(1, size):  # determine the size of the array to be received from each process
+        new_population = []
 
-                tmp = np.empty(len(final_results))  # create empty array to receive results
-                comm.irecv(tmp, source=i, tag=14)  # receive results from the process
-                final_results = np.hstack((final_results, tmp))  # add the received results to the final results
+        for i in range(_self_.population_size):
+            parent_1_idx = i % _self_.holdout
+            # print(parent_1_idx)
+            if _self_.mating:
+                parent_2_idx = min(_self_.population_size - 1, int(np.random.exponential(_self_.holdout)))
+            else:
+                parent_2_idx = parent_1_idx
 
-                self.rewards = [x.score for x in self.population]
+            offspring = _self_.population[parent_1_idx].mate(_self_.population[parent_2_idx])
+            new_population.append(offspring)
 
-                self.population = [self.population[x] for x in np.argsort(self.rewards)[::-1]]
-                self.population_size = len(self.population)
+        if _keep_best_:
+            new_population[-1] = _self_.population[0]  # Ensure best organism survives
 
-                # If we are murdering the ones that don't win, use this
-                #         self.population_new = [pop for pop in self.population if pop.winner]
+        _self_.population = new_population
 
-                #         if(len(self.population_new) > 2):
-                #             self.population = self.population_new
-                #             self.population_size = len(self.population)
-
-                new_population = []
-                for i in range(self.population_size):
-                    parent_1_idx = i % self.holdout
-                    # print(parent_1_idx)
-
-                    if self.mating:
-                        parent_2_idx = min(self.population_size - 1, int(np.random.exponential(self.holdout)))
-                    else:
-                        parent_2_idx = parent_1_idx
-                    offspring = self.population[parent_1_idx].mate(self.population[parent_2_idx])
-                    new_population.append(offspring)
-                if keep_best:
-                    new_population[-1] = self.population[0]  # Ensure best organism survives
-                self.population = new_population
-                # return -1 * max(rewards)
+        # close the pool of worker processes
+        pool.close()
+        pool.join()
 
     def get_best_organism(self, include_reward=False):
         # rewards = [np.mean(self.scoring_function(x)) for _ in range(repeats) for x in self.population]
@@ -130,46 +116,57 @@ class Ecosystem():
         else:
             return self.population[np.argsort(self.rewards)[-1]]
 
+def make_organism_generator(in_shape, out_shape, output='sigmoid'):
+    return lambda: Organism([in_shape, out_shape], output=output)
 
-organism_creator = lambda: Organism([7, 32, 32, 8, 1], output='relu')
-
-scoring_function = lambda organism_1, organism_2 : sim.simulate_and_evaluate(organism_1, organism_2, print_game=False, trials=1)
-ecosystem = Ecosystem(organism_creator, scoring_function, population_size=40, holdout=0.1, mating=True)
-
-generations = 15
-best_ai_list = []
-best_ai_models = []
-
-comm = MPI.COMM_WORLD
-size = comm.Get_size()
-rank = comm.Get_rank()
-
-if rank == 0:
+def run_generations(ecosystem, generations, best_ai_models, best_ai_list):
     print("Starting simulations")
-
-for i in range(generations):
-    if rank == 0:
-        print("Rank", rank, "Starting generation ", i, " out of ", generations)
+    
+    for i in range(generations):
+        print("Starting generation ", i, " out of ", generations)
         print("Population size is: ", ecosystem.population_size)
-
-    ecosystem.mpi_generation()
-
-    if rank == 0:
-        best_ai = ecosystem.get_best_organism(repeats=1, include_reward=True)
+        
+        ecosystem.mp_generation()
+        
+        best_ai = ecosystem.get_best_organism(_repeats_=1, _include_reward_=True)
         best_ai_models.append(best_ai[0])
         best_ai_list.append(best_ai[1])
         print("Best AI = ", best_ai[1])
-        ecosystem.get_best_organism().save("changed_rooks_and_depth3_model.pkl")
-
+        
+        ecosystem.get_best_organism().save("model_new.pkl")
+        
         fig, ax = plt.subplots()
+        
         # Creating data
         x = [i for i in range(len(best_ai_list))]
         y = best_ai_list
+        
         # Plotting barchart
         plt.plot(x, y)
-
         ax.set(xlabel='Generation', ylabel='Total Points Collected',
                title='Points Collected vs generations')
         ax.grid()
+        
         # Saving the figure.
         plt.savefig("output_gen_" + str(i) + ".jpg")
+
+if __name__ == '__main__':
+    mp.set_start_method('spawn')
+    
+    manager = mp.Manager()
+    best_ai_models = manager.list()
+    best_ai_list = manager.list()
+
+    #Change this depending on the type of simulation
+    organism_creator = make_organism_generator([2, 1], output='sigmoid')
+
+    scoring_function = lambda organism_1, organism_2 : sim.simulate_and_evaluate(organism_1, organism_2, print_game=False, trials=1)
+    ecosystem = Ecosystem(organism_creator, scoring_function, population_size=40, holdout=0.1, mating=True)
+
+    generations = 15
+    best_ai_list = []
+    best_ai_models = []
+    
+    process = mp.Process(target=run_generations, args=(ecosystem, generations, best_ai_models, best_ai_list))
+    process.start()
+    process.join()
