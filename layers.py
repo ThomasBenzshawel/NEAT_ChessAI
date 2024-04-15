@@ -14,7 +14,7 @@ def xelu(x):
     return x / (np.exp(-x) + 1)
 
 class AbstractLayer:
-    def __init__(self, prior:"AbstractLayer", out_features:int, learning_rate:float, allowed_activations:list[str]=None):
+    def __init__(self, prior:"AbstractLayer", out_features:int, learning_rate:float, allowed_activations:list[str]=None, **kwargs):
         self.prior = prior
         self.out_features = out_features
         self.learning_rate = learning_rate
@@ -34,8 +34,8 @@ class AbstractLayer:
         return self.prior.iter() + ret
 
 class Input(AbstractLayer):
-    def __init__(self, out_features:tuple):
-        super().__init__(None, out_features, 0)
+    def __init__(self, out_features:tuple, **kwargs):
+        super().__init__(None, out_features, 0, kwargs=kwargs)
 
     def __call__(self, x):
         x = tf.constant(x, dtype=float)
@@ -48,8 +48,8 @@ class Input(AbstractLayer):
         return [self]
 
 class Dense(AbstractLayer):
-    def __init__(self, prior:AbstractLayer, out_features:int, learning_rate:float, allowed_activations=None):
-        super().__init__(prior, out_features, learning_rate, allowed_activations)
+    def __init__(self, prior:AbstractLayer, out_features:int, learning_rate:float, allowed_activations=None, **kwargs):
+        super().__init__(prior, out_features, learning_rate, allowed_activations, kwargs=kwargs)
         self.layer = tf.keras.layers.Dense(out_features, activation=self.activation)
 
     def update(self):
@@ -59,8 +59,8 @@ class Dense(AbstractLayer):
         return self.layer(super().__call__(x))
 
 class Conv(AbstractLayer):
-    def __init__(self, prior:AbstractLayer, kernel_size:int, learning_rate:float, allowed_activations=None):
-        super().__init__(prior, None, learning_rate, allowed_activations)
+    def __init__(self, prior:AbstractLayer, kernel_size:int, learning_rate:float, allowed_activations=None, **kwargs):
+        super().__init__(prior, None, learning_rate, allowed_activations, kwargs=kwargs)
         self.layer = tf.keras.layers.Conv1D(1, kernel_size, data_format='channels_last', activation=self.activation)
 
     def update(self):
@@ -77,8 +77,8 @@ class Conv(AbstractLayer):
         return y
 
 class Attn(AbstractLayer):
-    def __init__(self, prior:AbstractLayer, out_features:int, learning_rate:float, allowed_activations=None):
-        super().__init__(prior, out_features, learning_rate, allowed_activations)
+    def __init__(self, prior:AbstractLayer, out_features:int, learning_rate:float, allowed_activations=None, **kwargs):
+        super().__init__(prior, out_features, learning_rate, allowed_activations, kwargs=kwargs)
         self.attn = tf.keras.layers.Attention()
         self.W_q = tf.keras.layers.Dense(out_features, activation=self.activation)
         self.W_k = tf.keras.layers.Dense(out_features, activation=self.activation)
@@ -100,8 +100,8 @@ class Attn(AbstractLayer):
         return y
 
 class BatchNorm(AbstractLayer):
-    def __init__(self, prior:AbstractLayer, learning_rate:float):
-        super().__init__(prior, prior.out_features, learning_rate)
+    def __init__(self, prior:AbstractLayer, learning_rate:float, **kwargs):
+        super().__init__(prior, prior.out_features, learning_rate, kwargs=kwargs)
         self.gamma = np.log(np.e - 1)
         self.beta = 0
 
@@ -121,7 +121,7 @@ class BatchNorm(AbstractLayer):
         return x
 
 class SkipConn(AbstractLayer):
-    def __init__(self, prior:AbstractLayer, out_features:int, learning_rate:float, skip_from:AbstractLayer, allowed_activations=None):
+    def __init__(self, prior:AbstractLayer, out_features:int, learning_rate:float, skip_from:AbstractLayer, allowed_activations=None, **kwargs):
         super().__init__(prior, out_features, learning_rate, allowed_activations)
         self.prior_to_out = tf.keras.layers.Dense(out_features, activation=self.activation)
         self.skip_to_out = tf.keras.layers.Dense(out_features, activation=self.activation)
