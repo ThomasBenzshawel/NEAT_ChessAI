@@ -1,6 +1,12 @@
 import numpy as np
 import tensorflow as tf
 import random
+from copy import copy
+
+# Using this in place of RELU.
+# It's like RELU, but it isn't exactly 0 for x<0, so it's differentiable (or traversable)
+def xelu(x):
+    return x / (np.exp(-x) + 1)
 
 def update_tf_weights(layer, learning_rate):
     layer.set_weights([
@@ -8,10 +14,24 @@ def update_tf_weights(layer, learning_rate):
         for w in layer.weights
     ])
 
-# Using this in place of RELU.
-# It's like RELU, but it isn't exactly 0 for x<0, so it's differentiable (or traversable)
-def xelu(x):
-    return x / (np.exp(-x) + 1)
+def copy_keras_layer(layer):
+    if not isinstance(layer, tf.keras.Layer):
+        return layer.get_copy()
+    conf = layer.get_config()
+    if 'activation' in conf and type(conf['activation']) != str:
+        conf['activation']['config'] = xelu
+    c = type(layer).from_config(conf)
+    c.build(layer.get_build_config()['input_shape'])
+    c.set_weights(layer.weights)
+    return c
+
+def copy_model(last_layer):
+    c = [l.get_copy() for l in last_layer.iter()]
+    for i in range(len(c)-1):
+        c[i+1].prior = c[i]
+        if type(c[i+1]) is SkipConn:
+            c[i+1].skip_from = c[c[i+1].skip_from]
+    return c
 
 class AbstractLayer:
     def __init__(self, prior:"AbstractLayer", out_features:int, learning_rate:float, allowed_activations:list[str]=None, **kwargs):
@@ -32,6 +52,11 @@ class AbstractLayer:
         if ret is None:
             ret = [self]
         return self.prior.iter() + ret
+
+    def get_copy(self):
+        c = copy(self)
+        c.prior = None
+        return c
 
 class Input(AbstractLayer):
     def __init__(self, out_features:tuple, **kwargs):
@@ -58,6 +83,11 @@ class Dense(AbstractLayer):
     def __call__(self, x):
         return self.layer(super().__call__(x))
 
+    def get_copy(self):
+        c = super().get_copy()
+        c.layer = copy_keras_layer(c.layer)
+        return c
+
 class Conv(AbstractLayer):
     def __init__(self, prior:AbstractLayer, kernel_size:int, learning_rate:float, allowed_activations=None, **kwargs):
         super().__init__(prior, None, learning_rate, allowed_activations, kwargs=kwargs)
@@ -75,6 +105,11 @@ class Conv(AbstractLayer):
         if expand:
             y = tf.squeeze(y, axis=-1)
         return y
+
+    def get_copy(self):
+        c = super().get_copy()
+        c.layer = copy_keras_layer(c.layer)
+        return c
 
 class Attn(AbstractLayer):
     def __init__(self, prior:AbstractLayer, out_features:int, learning_rate:float, allowed_activations=None, **kwargs):
@@ -98,6 +133,14 @@ class Attn(AbstractLayer):
         v = self.W_v(x)
         y = self.attn([q, v, k])
         return y
+
+    def get_copy(self):
+        c = super().get_copy()
+        c.attn = copy_keras_layer(c.attn)
+        c.W_q = copy_keras_layer(c.W_q)
+        c.W_k = copy_keras_layer(c.W_k)
+        c.W_v = copy_keras_layer(c.W_v)
+        return c
 
 class BatchNorm(AbstractLayer):
     def __init__(self, prior:AbstractLayer, learning_rate:float, **kwargs):
@@ -143,6 +186,14 @@ class SkipConn(AbstractLayer):
 
         return x1 + x2
 
+    def get_copy(self):
+        c = super().get_copy()
+        c.prior_to_out = copy_keras_layer(c.prior_to_out)
+        c.skip_to_out = copy_keras_layer(c.skip_to_out)
+        c.flatten = copy_keras_layer(c.flatten)
+        c.skip_from = self.iter().index(self.skip_from)
+        return c
+
 if __name__ == '__main__':
     # Example network
     x = Input((3,)) # input could be a multidim vector (e.g., (5,3) you have have 5 embeddings with dims of 3)
@@ -160,6 +211,7 @@ if __name__ == '__main__':
     # Prediction from a layer X first goes through all prior layers: X(x) = X <- X-1 <- X-2 <- ... <- Input(x).
     print(
         # Predict on batches at a time
+        'model_1:',
         model([ # you can also pass a numpy array
             [1,-5,3],
             [-1,10,1]
@@ -169,8 +221,36 @@ if __name__ == '__main__':
     # Update
     for l in model.iter():
         l.update()
-    # prediction should be slightly different
     print(
+        'model_1, Should be slightly different:',
+        model([
+            [1,-5,3],
+            [-1,10,1]
+        ])
+    )
+
+    #copying network
+    layers2 = copy_model(model)
+    model2 = layers2[-1]
+    # prediction should be same
+    print(
+        'model_2: Should be same:',
+        model2([
+            [1,-5,3],
+            [-1,10,1]
+        ])
+    )
+    for l in model2.iter():
+        l.update()
+    print(
+        'model_2: Should be different:',
+        model2([
+            [1,-5,3],
+            [-1,10,1]
+        ])
+    )
+    print(
+        'model_1: Should be same as last model_1 call:',
         model([
             [1,-5,3],
             [-1,10,1]
