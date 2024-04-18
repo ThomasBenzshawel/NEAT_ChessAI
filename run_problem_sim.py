@@ -1,9 +1,7 @@
-import copy
 import numpy as np
-import pickle
 import problem_sim_general as sim
 import matplotlib.pyplot as plt
-from organism import Organism
+from organism import NEATOrganism
 from multiprocessing import Pool
 import multiprocessing as mp
 import numpy as np
@@ -116,8 +114,8 @@ class Ecosystem():
         else:
             return self.population[np.argsort(self.rewards)[-1]]
 
-def make_organism_generator(in_shape, out_shape, output='sigmoid'):
-    return lambda: Organism([in_shape, out_shape], output=output)
+def make_organism_generator(in_shape, out_shape):
+    return lambda: NEATOrganism(in_shape, out_shape)
 
 def run_generations(ecosystem, generations, best_ai_models, best_ai_list):
     print("Starting simulations")
@@ -151,6 +149,7 @@ def run_generations(ecosystem, generations, best_ai_models, best_ai_list):
         plt.savefig("output_gen_" + str(i) + ".jpg")
 
 if __name__ == '__main__':
+    TF_ENABLE_ONEDNN_OPTS=0
     mp.set_start_method('spawn')
     
     manager = mp.Manager()
@@ -158,9 +157,9 @@ if __name__ == '__main__':
     best_ai_list = manager.list()
 
     #Change this depending on the type of simulation
-    organism_creator = make_organism_generator([2, 1], output='sigmoid')
+    organism_creator = make_organism_generator(384, 1)
 
-    scoring_function = lambda organism_1, organism_2 : sim.simulate_and_evaluate_organism(organism_1, organism_2, num_sims=10, objective_function= lambda x: x)
+    scoring_function = lambda organism_1, organism_2 : sim.simulate_and_evaluate_organism(organism_1, organism_2, num_sims=10, objective_function = lambda x: x)
     ecosystem = Ecosystem(organism_creator, scoring_function, population_size=40, holdout=0.1, mating=True)
 
     generations = 15

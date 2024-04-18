@@ -14,6 +14,8 @@ import copy
 from abc import abstractmethod
 import random
 
+dill.loads(dill.dumps(lambda x:x))
+
 class Organism:
     def __init__(self):
         pass

@@ -65,12 +65,76 @@ base_kingstable = [
 
 table_len = 64
 
-learned_pawntable = np.random.rand(table_len)
-learned_knightstable = np.random.rand(table_len)
-learned_bishopstable = np.random.rand(table_len)
-learned_rookstable = np.random.rand(table_len)
-learned_queenstable = np.random.rand(table_len)
-learned_kingstable = np.random.rand(table_len)
+def turnary_table_encoding(board):
+    # table is a 1D np array of length 64
+    # chess_board is a chess.Board() object
+    # returns a 1D np array of length 64
+    # Each element of the array is either -1, 0, or 1
+    # -1 represents an enemy piece
+    # 0 represents an empty square
+    # 1 represents a friendly piece
+    #output is a 1D np array of length # of squares on the board (64) times the number of pieces (6)
+
+    if board.turn:
+        turn = 1
+    else:
+        turn = -1
+
+
+    temp_pawn = np.zeros((1, 64))
+
+    for i in board.pieces(chess.PAWN, chess.WHITE):
+        temp_pawn[i] = 1 * turn
+    for i in board.pieces(chess.PAWN, chess.BLACK):
+        temp_pawn[i] = -1 * turn
+
+    temp_knight = np.zeros((1, 64))
+    
+    for i in board.pieces(chess.KNIGHT, chess.WHITE):
+        temp_knight[i] = 1 * turn
+    for i in board.pieces(chess.KNIGHT, chess.BLACK):
+        temp_knight[i] = -1 * turn
+
+    temp_bishop = np.zeros((1, 64))
+
+    for i in board.pieces(chess.BISHOP, chess.WHITE):
+        temp_bishop[i] = 1 * turn
+    for i in board.pieces(chess.BISHOP, chess.BLACK):
+        temp_bishop[i] = -1 * turn
+
+    temp_rook = np.zeros((1, 64))
+
+    for i in board.pieces(chess.ROOK, chess.WHITE):
+        temp_rook[i] = 1 * turn
+    for i in board.pieces(chess.ROOK, chess.BLACK):
+        temp_rook[i] = -1 * turn
+
+    temp_queen = np.zeros((1, 64))
+
+    for i in board.pieces(chess.QUEEN, chess.WHITE):    
+        temp_queen[i] = 1 * turn
+    for i in board.pieces(chess.QUEEN, chess.BLACK):
+        temp_queen[i] = -1 * turn
+
+    temp_king = np.zeros((1, 64))
+
+    for i in board.pieces(chess.KING, chess.WHITE):
+        temp_king[i] = 1 * turn
+    for i in board.pieces(chess.KING, chess.BLACK):
+        temp_king[i] = -1 * turn
+
+    return np.concatenate((temp_pawn, temp_knight, temp_bishop, temp_rook, temp_queen, temp_king), axis=1)
+
+    
+
+    
+
+input_pawn_table = np.zeros((1, 64))
+input_knights_table = np.zeros((1, 64))
+input_bishop_table = np.zeros((1, 64))
+input_rooks_table = np.zeros((1, 64))
+input_queen_table = np.zeros((1, 64))
+input_king_table = np.zeros((1, 64))
 #This allows the organism to learn a table of values for each piece
 #The tables are used to evaluate the board state and make decisions
 #The values are learned through the organism's neural network
@@ -100,33 +164,34 @@ def evaluate_board(board, organism=None):
 
     material = 100 * (wp - bp) + 320 * (wn - bn) + 330 * (wb - bb) + 500 * (wr - br) + 900 * (wq - bq)
 
-    pawnsq = sum([learned_pawntable[i] for i in board.pieces(chess.PAWN, chess.WHITE)])
-    pawnsq = pawnsq + sum([-learned_pawntable[chess.square_mirror(i)] for i in board.pieces(chess.PAWN, chess.BLACK)])
+    pawnsq = sum([base_pawntable[i] for i in board.pieces(chess.PAWN, chess.WHITE)])
+    pawnsq = pawnsq + sum([-base_pawntable[chess.square_mirror(i)] for i in board.pieces(chess.PAWN, chess.BLACK)])
 
-    knightsq = sum([learned_knightstable[i] for i in board.pieces(chess.KNIGHT, chess.WHITE)])
-    knightsq = knightsq + sum([-learned_knightstable[chess.square_mirror(i)]
+    knightsq = sum([base_knightstable[i] for i in board.pieces(chess.KNIGHT, chess.WHITE)])
+    knightsq = knightsq + sum([-base_knightstable[chess.square_mirror(i)]
                                for i in board.pieces(chess.KNIGHT, chess.BLACK)])
 
-    bishopsq = sum([learned_bishopstable[i] for i in board.pieces(chess.BISHOP, chess.WHITE)])
-    bishopsq = bishopsq + sum([-learned_bishopstable[chess.square_mirror(i)]
+    bishopsq = sum([base_bishopstable[i] for i in board.pieces(chess.BISHOP, chess.WHITE)])
+    bishopsq = bishopsq + sum([-base_bishopstable[chess.square_mirror(i)]
                                for i in board.pieces(chess.BISHOP, chess.BLACK)])
 
-    rooksq = sum([learned_rookstable[i] for i in board.pieces(chess.ROOK, chess.WHITE)])
-    rooksq = rooksq + sum([-learned_rookstable[chess.square_mirror(i)]
+    rooksq = sum([base_rookstable[i] for i in board.pieces(chess.ROOK, chess.WHITE)])
+    rooksq = rooksq + sum([-base_rookstable[chess.square_mirror(i)]
                            for i in board.pieces(chess.ROOK, chess.BLACK)])
 
-    queensq = sum([learned_queenstable[i] for i in board.pieces(chess.QUEEN, chess.WHITE)])
-    queensq = queensq + sum([-learned_queenstable[chess.square_mirror(i)]
+    queensq = sum([base_queenstable[i] for i in board.pieces(chess.QUEEN, chess.WHITE)])
+    queensq = queensq + sum([-base_queenstable[chess.square_mirror(i)]
                              for i in board.pieces(chess.QUEEN, chess.BLACK)])
 
-    kingsq = sum([learned_kingstable[i] for i in board.pieces(chess.KING, chess.WHITE)])
-    kingsq = kingsq + sum([-learned_kingstable[chess.square_mirror(i)]
+    kingsq = sum([base_kingstable[i] for i in board.pieces(chess.KING, chess.WHITE)])
+    kingsq = kingsq + sum([-base_kingstable[chess.square_mirror(i)]
                            for i in board.pieces(chess.KING, chess.BLACK)])
 
     if organism == None:
         eval = material + pawnsq + knightsq + bishopsq + rooksq + queensq + kingsq
     else:
-        eval = organism.predict().reshape((1, -1))
+        embedding = turnary_table_encoding(board)
+        eval = organism.predict(embedding).reshape((1, -1))
 
         # compare performance of below
         #         if type(eval) is np.ndarray:
