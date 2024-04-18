@@ -81,49 +81,49 @@ def turnary_table_encoding(board):
         turn = -1
 
 
-    temp_pawn = np.zeros((1, 64))
+    temp_pawn = np.zeros(64)
 
     for i in board.pieces(chess.PAWN, chess.WHITE):
         temp_pawn[i] = 1 * turn
     for i in board.pieces(chess.PAWN, chess.BLACK):
         temp_pawn[i] = -1 * turn
 
-    temp_knight = np.zeros((1, 64))
+    temp_knight = np.zeros(64)
     
     for i in board.pieces(chess.KNIGHT, chess.WHITE):
         temp_knight[i] = 1 * turn
     for i in board.pieces(chess.KNIGHT, chess.BLACK):
         temp_knight[i] = -1 * turn
 
-    temp_bishop = np.zeros((1, 64))
+    temp_bishop = np.zeros(64)
 
     for i in board.pieces(chess.BISHOP, chess.WHITE):
         temp_bishop[i] = 1 * turn
     for i in board.pieces(chess.BISHOP, chess.BLACK):
         temp_bishop[i] = -1 * turn
 
-    temp_rook = np.zeros((1, 64))
+    temp_rook = np.zeros(64)
 
     for i in board.pieces(chess.ROOK, chess.WHITE):
         temp_rook[i] = 1 * turn
     for i in board.pieces(chess.ROOK, chess.BLACK):
         temp_rook[i] = -1 * turn
 
-    temp_queen = np.zeros((1, 64))
+    temp_queen = np.zeros(64)
 
     for i in board.pieces(chess.QUEEN, chess.WHITE):    
         temp_queen[i] = 1 * turn
     for i in board.pieces(chess.QUEEN, chess.BLACK):
         temp_queen[i] = -1 * turn
 
-    temp_king = np.zeros((1, 64))
+    temp_king = np.zeros(64)
 
     for i in board.pieces(chess.KING, chess.WHITE):
         temp_king[i] = 1 * turn
     for i in board.pieces(chess.KING, chess.BLACK):
         temp_king[i] = -1 * turn
 
-    return np.concatenate((temp_pawn, temp_knight, temp_bishop, temp_rook, temp_queen, temp_king), axis=1)
+    return np.concatenate((temp_pawn, temp_knight, temp_bishop, temp_rook, temp_queen, temp_king), axis=0)
 
     
 

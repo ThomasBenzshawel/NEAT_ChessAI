@@ -117,16 +117,20 @@ class Ecosystem():
 def make_organism_generator(in_shape, out_shape):
     return lambda: NEATOrganism(in_shape, out_shape)
 
-def run_generations(ecosystem, generations, best_ai_models, best_ai_list):
+
+def run_generations(ecosystem, generations):
     print("Starting simulations")
+    
+    best_ai_list = []
+    best_ai_models = []
     
     for i in range(generations):
         print("Starting generation ", i, " out of ", generations)
         print("Population size is: ", ecosystem.population_size)
         
-        ecosystem.mp_generation()
+        ecosystem.generation()
         
-        best_ai = ecosystem.get_best_organism(_repeats_=1, _include_reward_=True)
+        best_ai = ecosystem.get_best_organism(include_reward=True)
         best_ai_models.append(best_ai[0])
         best_ai_list.append(best_ai[1])
         print("Best AI = ", best_ai[1])
@@ -150,12 +154,7 @@ def run_generations(ecosystem, generations, best_ai_models, best_ai_list):
 
 if __name__ == '__main__':
     TF_ENABLE_ONEDNN_OPTS=0
-    mp.set_start_method('spawn')
     
-    manager = mp.Manager()
-    best_ai_models = manager.list()
-    best_ai_list = manager.list()
-
     #Change this depending on the type of simulation
     organism_creator = make_organism_generator(384, 1)
 
@@ -163,9 +162,4 @@ if __name__ == '__main__':
     ecosystem = Ecosystem(organism_creator, scoring_function, population_size=40, holdout=0.1, mating=True)
 
     generations = 15
-    best_ai_list = []
-    best_ai_models = []
-    
-    process = mp.Process(target=run_generations, args=(ecosystem, generations, best_ai_models, best_ai_list))
-    process.start()
-    process.join()
+    run_generations(ecosystem, generations)
