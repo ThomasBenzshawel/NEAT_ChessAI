@@ -211,7 +211,7 @@ class NEATOrganism(Organism):
                 skip_from = random.choice(cop._layers[:loc])
                 insert = SkipConn(
                     prior=cop._layers[loc-1],
-                    out_features=random.randing(n_node_min, n_node_max),
+                    out_features=random.randint(n_node_min, n_node_max),
                     learning_rate=cop._learning_rate,
                     skip_from=skip_from,
                     kwargs=cop._layer_constraints[self._layer_str_map[SkipConn]]
