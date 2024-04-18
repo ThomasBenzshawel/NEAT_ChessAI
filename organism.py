@@ -159,7 +159,7 @@ class NEATOrganism(Organism):
             self._layer_constraints[self._layer_str_map[BatchNorm]] = {}
 
         if not "activations" in constraints.keys():
-            self._layer_constraints['activations'] = [layers.xelu, 'sigmoid']
+            self._layer_constraints['activations'] = ['xelu', 'sigmoid']
 
         m_input = Input(n_inputs)
         self._layers.append(m_input)
@@ -230,7 +230,7 @@ class NEATOrganism(Organism):
                          learning_rate=self._learning_rate,
                          options=self._layer_options
                         )
-        c._layers = [l.copy() for l in self._layers]
+        c._layers = layers.copy_model(self._layers[-1])
         c._layer_constraints = self._layer_constraints
         c._add_rate = self._add_rate
         return c
