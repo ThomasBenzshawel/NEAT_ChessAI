@@ -8,13 +8,13 @@ from copy import copy
 def xelu(x):
     return x / (np.exp(-x) + 1)
 
-def update_tf_weights(layer, learning_rate):
+def _update_tf_weights(layer, learning_rate):
     layer.set_weights([
         w + learning_rate*tf.random.normal(w.shape)
         for w in layer.weights
     ])
 
-def copy_keras_layer(layer):
+def _copy_keras_layer(layer):
     if not isinstance(layer, tf.keras.Layer):
         return layer.get_copy()
     conf = layer.get_config()
@@ -34,13 +34,15 @@ def copy_model(last_layer):
     return c
 
 class AbstractLayer:
-    def __init__(self, prior:"AbstractLayer", out_features:int, learning_rate:float, allowed_activations:list[str]=None, **kwargs):
+    def __init__(self, prior:"AbstractLayer", learning_rate:float, out_features:int, allowed_activations:list[str]=None, **kwargs):
         self.prior = prior
         self.out_features = out_features
         self.learning_rate = learning_rate
         if allowed_activations is None:
-            allowed_activations = [xelu, 'sigmoid']
+            allowed_activations = ['xelu', 'sigmoid']
         self.activation = random.choice(allowed_activations)
+        if self.activation == 'xelu':
+            self.activation = xelu
 
     def update(self):
         pass
@@ -60,7 +62,7 @@ class AbstractLayer:
 
 class Input(AbstractLayer):
     def __init__(self, out_features:tuple, **kwargs):
-        super().__init__(None, out_features, 0, kwargs=kwargs)
+        super().__init__(None, 0, out_features, kwargs=kwargs)
 
     def __call__(self, x):
         x = tf.constant(x, dtype=float)
@@ -73,28 +75,29 @@ class Input(AbstractLayer):
         return [self]
 
 class Dense(AbstractLayer):
-    def __init__(self, prior:AbstractLayer, out_features:int, learning_rate:float, allowed_activations=None, **kwargs):
-        super().__init__(prior, out_features, learning_rate, allowed_activations, kwargs=kwargs)
+    def __init__(self, prior:AbstractLayer, learning_rate:float, out_features:int, allowed_activations=None, **kwargs):
+        super().__init__(prior, learning_rate, out_features, allowed_activations, kwargs=kwargs)
         self.layer = tf.keras.layers.Dense(out_features, activation=self.activation)
 
     def update(self):
-        update_tf_weights(self.layer, self.learning_rate)
+        _update_tf_weights(self.layer, self.learning_rate)
 
     def __call__(self, x):
         return self.layer(super().__call__(x))
 
     def get_copy(self):
         c = super().get_copy()
-        c.layer = copy_keras_layer(c.layer)
+        c.layer = _copy_keras_layer(c.layer)
         return c
 
 class Conv(AbstractLayer):
-    def __init__(self, prior:AbstractLayer, kernel_size:int, learning_rate:float, allowed_activations=None, **kwargs):
-        super().__init__(prior, None, learning_rate, allowed_activations, kwargs=kwargs)
+    def __init__(self, prior:AbstractLayer, learning_rate:float, out_features:int, allowed_activations=None, **kwargs):
+        kernel_size = int(prior.out_features - out_features + 1)
+        super().__init__(prior, learning_rate, out_features, allowed_activations, kwargs=kwargs)
         self.layer = tf.keras.layers.Conv1D(1, kernel_size, data_format='channels_last', activation=self.activation)
 
     def update(self):
-        update_tf_weights(self.layer, self.learning_rate)
+        _update_tf_weights(self.layer, self.learning_rate)
 
     def __call__(self, x):
         x = super().__call__(x)
@@ -108,21 +111,21 @@ class Conv(AbstractLayer):
 
     def get_copy(self):
         c = super().get_copy()
-        c.layer = copy_keras_layer(c.layer)
+        c.layer = _copy_keras_layer(c.layer)
         return c
 
 class Attn(AbstractLayer):
-    def __init__(self, prior:AbstractLayer, out_features:int, learning_rate:float, allowed_activations=None, **kwargs):
-        super().__init__(prior, out_features, learning_rate, allowed_activations, kwargs=kwargs)
+    def __init__(self, prior:AbstractLayer, learning_rate:float, out_features:int, allowed_activations=None, **kwargs):
+        super().__init__(prior, learning_rate, out_features, allowed_activations, kwargs=kwargs)
         self.attn = tf.keras.layers.Attention()
         self.W_q = tf.keras.layers.Dense(out_features, activation=self.activation)
         self.W_k = tf.keras.layers.Dense(out_features, activation=self.activation)
         self.W_v = tf.keras.layers.Dense(out_features, activation=self.activation)
 
     def update(self):
-        update_tf_weights(self.W_q, self.learning_rate)
-        update_tf_weights(self.W_k, self.learning_rate)
-        update_tf_weights(self.W_v, self.learning_rate)
+        _update_tf_weights(self.W_q, self.learning_rate)
+        _update_tf_weights(self.W_k, self.learning_rate)
+        _update_tf_weights(self.W_v, self.learning_rate)
 
     def __call__(self, x):
         x = super().__call__(x)
@@ -136,21 +139,21 @@ class Attn(AbstractLayer):
 
     def get_copy(self):
         c = super().get_copy()
-        c.attn = copy_keras_layer(c.attn)
-        c.W_q = copy_keras_layer(c.W_q)
-        c.W_k = copy_keras_layer(c.W_k)
-        c.W_v = copy_keras_layer(c.W_v)
+        c.attn = _copy_keras_layer(c.attn)
+        c.W_q = _copy_keras_layer(c.W_q)
+        c.W_k = _copy_keras_layer(c.W_k)
+        c.W_v = _copy_keras_layer(c.W_v)
         return c
 
 class BatchNorm(AbstractLayer):
     def __init__(self, prior:AbstractLayer, learning_rate:float, **kwargs):
-        super().__init__(prior, prior.out_features, learning_rate, kwargs=kwargs)
+        super().__init__(prior, learning_rate, prior.out_features, kwargs=kwargs)
         self.gamma = np.log(np.e - 1)
         self.beta = 0
 
     def update(self):
-        self.beta += self.learning_rate*self.beta
-        self.gamma += self.learning_rate*self.gamma
+        self.beta += self.learning_rate*np.random.normal()
+        self.gamma += self.learning_rate*np.random.normal()
 
     def __call__(self, x):
         x = super().__call__(x)
@@ -164,16 +167,16 @@ class BatchNorm(AbstractLayer):
         return x
 
 class SkipConn(AbstractLayer):
-    def __init__(self, prior:AbstractLayer, out_features:int, learning_rate:float, skip_from:AbstractLayer, allowed_activations=None, **kwargs):
-        super().__init__(prior, out_features, learning_rate, allowed_activations)
+    def __init__(self, prior:AbstractLayer, learning_rate:float, out_features:int, skip_from:AbstractLayer, allowed_activations=None, **kwargs):
+        super().__init__(prior, learning_rate, out_features, allowed_activations)
         self.prior_to_out = tf.keras.layers.Dense(out_features, activation=self.activation)
         self.skip_to_out = tf.keras.layers.Dense(out_features, activation=self.activation)
         self.flatten = tf.keras.layers.Flatten()
         self.skip_from = skip_from
 
     def update(self):
-        update_tf_weights(self.prior_to_out, self.learning_rate)
-        update_tf_weights(self.skip_to_out, self.learning_rate)
+        _update_tf_weights(self.prior_to_out, self.learning_rate)
+        _update_tf_weights(self.skip_to_out, self.learning_rate)
 
     def __call__(self, x):
         x1 = super().__call__(x)
@@ -188,9 +191,9 @@ class SkipConn(AbstractLayer):
 
     def get_copy(self):
         c = super().get_copy()
-        c.prior_to_out = copy_keras_layer(c.prior_to_out)
-        c.skip_to_out = copy_keras_layer(c.skip_to_out)
-        c.flatten = copy_keras_layer(c.flatten)
+        c.prior_to_out = _copy_keras_layer(c.prior_to_out)
+        c.skip_to_out = _copy_keras_layer(c.skip_to_out)
+        c.flatten = _copy_keras_layer(c.flatten)
         c.skip_from = self.iter().index(self.skip_from)
         return c
 
@@ -198,13 +201,13 @@ if __name__ == '__main__':
     # Example network
     x = Input((3,)) # input could be a multidim vector (e.g., (5,3) you have have 5 embeddings with dims of 3)
     y = BatchNorm(x, 0.1)
-    y = SkipConn(y, 5, 0.1, x) # skip conn from input
-    y = Attn(y, 3, 0.1)
-    y = Dense(y, 5, 0.1)
-    y = Conv(y, 3, 0.1)
+    y = SkipConn(y, 0.1, 5, x) # skip conn from input
+    y = Attn(y, 0.1, 3)
+    y = Dense(y, 0.1, 5)
+    y = Conv(y, 0.1, 3)
     z = BatchNorm(y, 0.1)
-    y = Dense(z, 4, 0.1)
-    y = SkipConn(y, 4, 0.1, z)
+    y = Dense(z, 0.1, 4)
+    y = SkipConn(y, 0.1, 4, z)
     model = y
 
     # Prediction
