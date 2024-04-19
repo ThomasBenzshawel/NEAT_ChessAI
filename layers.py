@@ -2,7 +2,6 @@ import numpy as np
 import tensorflow as tf
 import random
 from copy import copy
-from keras_pickle_wrapper import KerasPickleWrapper
 
 # Using this in place of RELU.
 # It's like RELU, but it isn't exactly 0 for x<0, so it's differentiable (or traversable)
@@ -78,72 +77,72 @@ class Input(AbstractLayer):
 class Dense(AbstractLayer):
     def __init__(self, prior:AbstractLayer, learning_rate:float, out_features:int, allowed_activations=None, **kwargs):
         super().__init__(prior, learning_rate, out_features, allowed_activations, kwargs=kwargs)
-        self.layer = KerasPickleWrapper(tf.keras.layers.Dense(out_features, activation=self.activation))
+        self.layer = tf.keras.layers.Dense(out_features, activation=self.activation)
 
     def update(self):
-        _update_tf_weights(self.layer(), self.learning_rate)
+        _update_tf_weights(self.layer, self.learning_rate)
 
     def __call__(self, x):
-        return self.layer()(super().__call__(x))
+        return self.layer(super().__call__(x))
 
     def get_copy(self):
         c = super().get_copy()
-        c.layer = KerasPickleWrapper(_copy_keras_layer(c.layer()))
+        c.layer = _copy_keras_layer(c.layer)
         return c
 
 class Conv(AbstractLayer):
     def __init__(self, prior:AbstractLayer, learning_rate:float, out_features:int, allowed_activations=None, **kwargs):
         kernel_size = int(prior.out_features - out_features + 1)
         super().__init__(prior, learning_rate, out_features, allowed_activations, kwargs=kwargs)
-        self.layer = KerasPickleWrapper(tf.keras.layers.Conv1D(1, kernel_size, data_format='channels_last', activation=self.activation))
+        self.layer = tf.keras.layers.Conv1D(1, kernel_size, data_format='channels_last', activation=self.activation)
 
     def update(self):
-        _update_tf_weights(self.layer(), self.learning_rate)
+        _update_tf_weights(self.layer, self.learning_rate)
 
     def __call__(self, x):
         x = super().__call__(x)
         expand = len(x.shape) < 3
         if expand:
             x = tf.expand_dims(x, axis=-1)
-        y = self.layer()(x)
+        y = self.layer(x)
         if expand:
             y = tf.squeeze(y, axis=-1)
         return y
 
     def get_copy(self):
         c = super().get_copy()
-        c.layer = KerasPickleWrapper(_copy_keras_layer(c.layer()))
+        c.layer = _copy_keras_layer(c.layer)
         return c
 
 class Attn(AbstractLayer):
     def __init__(self, prior:AbstractLayer, learning_rate:float, out_features:int, allowed_activations=None, **kwargs):
         super().__init__(prior, learning_rate, out_features, allowed_activations, kwargs=kwargs)
         self.attn = tf.keras.layers.Attention()
-        self.W_q = KerasPickleWrapper(tf.keras.layers.Dense(out_features, activation=self.activation))
-        self.W_k = KerasPickleWrapper(tf.keras.layers.Dense(out_features, activation=self.activation))
-        self.W_v = KerasPickleWrapper(tf.keras.layers.Dense(out_features, activation=self.activation))
+        self.W_q = tf.keras.layers.Dense(out_features, activation=self.activation)
+        self.W_k = tf.keras.layers.Dense(out_features, activation=self.activation)
+        self.W_v = tf.keras.layers.Dense(out_features, activation=self.activation)
 
     def update(self):
-        _update_tf_weights(self.W_q(), self.learning_rate)
-        _update_tf_weights(self.W_k(), self.learning_rate)
-        _update_tf_weights(self.W_v(), self.learning_rate)
+        _update_tf_weights(self.W_q, self.learning_rate)
+        _update_tf_weights(self.W_k, self.learning_rate)
+        _update_tf_weights(self.W_v, self.learning_rate)
 
     def __call__(self, x):
         x = super().__call__(x)
         if len(x.shape) != 3:
             x = tf.expand_dims(x, axis=-1)
-        q = self.W_q()(x)
-        k = self.W_k()(x)
-        v = self.W_v()(x)
+        q = self.W_q(x)
+        k = self.W_k(x)
+        v = self.W_v(x)
         y = self.attn([q, v, k])
         return y
 
     def get_copy(self):
         c = super().get_copy()
         c.attn = _copy_keras_layer(c.attn)
-        c.W_q = KerasPickleWrapper(_copy_keras_layer(c.W_q()))
-        c.W_k = KerasPickleWrapper(_copy_keras_layer(c.W_k()))
-        c.W_v = KerasPickleWrapper(_copy_keras_layer(c.W_v()))
+        c.W_q = _copy_keras_layer(c.W_q)
+        c.W_k = _copy_keras_layer(c.W_k)
+        c.W_v = _copy_keras_layer(c.W_v)
         return c
 
 class BatchNorm(AbstractLayer):
@@ -170,30 +169,30 @@ class BatchNorm(AbstractLayer):
 class SkipConn(AbstractLayer):
     def __init__(self, prior:AbstractLayer, learning_rate:float, out_features:int, skip_from:AbstractLayer, allowed_activations=None, **kwargs):
         super().__init__(prior, learning_rate, out_features, allowed_activations)
-        self.prior_to_out = KerasPickleWrapper(tf.keras.layers.Dense(out_features, activation=self.activation))
-        self.skip_to_out = KerasPickleWrapper(tf.keras.layers.Dense(out_features, activation=self.activation))
+        self.prior_to_out = tf.keras.layers.Dense(out_features, activation=self.activation)
+        self.skip_to_out = tf.keras.layers.Dense(out_features, activation=self.activation)
         self.flatten = tf.keras.layers.Flatten()
         self.skip_from = skip_from
 
     def update(self):
-        _update_tf_weights(self.prior_to_out(), self.learning_rate)
-        _update_tf_weights(self.skip_to_out(), self.learning_rate)
+        _update_tf_weights(self.prior_to_out, self.learning_rate)
+        _update_tf_weights(self.skip_to_out, self.learning_rate)
 
     def __call__(self, x):
         x1 = super().__call__(x)
         x1 = self.flatten(x1)
-        x1 = self.prior_to_out()(x1)
+        x1 = self.prior_to_out(x1)
 
         x2 = self.skip_from(x)
         x2 = self.flatten(x2)
-        x2 = self.skip_to_out()(x2)
+        x2 = self.skip_to_out(x2)
 
         return x1 + x2
 
     def get_copy(self):
         c = super().get_copy()
-        c.prior_to_out = KerasPickleWrapper(_copy_keras_layer(c.prior_to_out()))
-        c.skip_to_out = KerasPickleWrapper(_copy_keras_layer(c.skip_to_out()))
+        c.prior_to_out = _copy_keras_layer(c.prior_to_out)
+        c.skip_to_out = _copy_keras_layer(c.skip_to_out)
         c.flatten = _copy_keras_layer(c.flatten)
         c.skip_from = self.iter().index(self.skip_from)
         return c
