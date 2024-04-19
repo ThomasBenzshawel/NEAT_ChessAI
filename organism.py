@@ -163,7 +163,7 @@ class NEATOrganism(Organism):
 
         m_input = Input(n_inputs)
         self._layers.append(m_input)
-        self._layers.append(Dense(m_input, n_outputs, learning_rate))
+        self._layers.append(Dense(m_input, learning_rate, n_outputs))
     
     def predict(self, state):
         """

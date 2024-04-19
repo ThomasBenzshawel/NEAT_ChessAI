@@ -156,7 +156,7 @@ if __name__ == '__main__':
     TF_ENABLE_ONEDNN_OPTS=0
     
     #Change this depending on the type of simulation
-    organism_creator = make_organism_generator((384,), (1,))
+    organism_creator = make_organism_generator((384,), 1)
 
     scoring_function = lambda organism_1, organism_2 : sim.simulate_and_evaluate_organism(organism_1, organism_2, num_sims=10, objective_function = lambda x: x)
     ecosystem = Ecosystem(organism_creator, scoring_function, population_size=40, holdout=0.1, mating=True)

@@ -191,7 +191,7 @@ def evaluate_board(board, organism=None):
         eval = material + pawnsq + knightsq + bishopsq + rooksq + queensq + kingsq
     else:
         embedding = turnary_table_encoding(board)
-        eval = organism.predict(embedding.reshape((1, -1))).reshape((1, -1))
+        eval = organism.predict(embedding.reshape((1, -1)))#.reshape((1, -1))
 
         # compare performance of below
         #         if type(eval) is np.ndarray:
