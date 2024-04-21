@@ -2,6 +2,7 @@ import numpy as np
 import tensorflow as tf
 import random
 from copy import copy
+from dataclasses import dataclass
 
 # Using this in place of RELU.
 # It's like RELU, but it isn't exactly 0 for x<0, so it's differentiable (or traversable)
@@ -14,15 +15,31 @@ def _update_tf_weights(layer, learning_rate):
         for w in layer.weights
     ])
 
-def _copy_keras_layer(layer):
-    if not isinstance(layer, tf.keras.Layer):
-        return layer.get_copy()
+@dataclass
+class _KerasLayerConfig:
+    conf: dict
+    weights: list
+    build_conf: dict
+    layer_t: type
+
+def _keras_layer_to_config(layer):
     conf = layer.get_config()
     if 'activation' in conf and type(conf['activation']) != str:
         conf['activation']['config'] = xelu
-    c = type(layer).from_config(conf)
-    c.build(layer.get_build_config()['input_shape'])
-    c.set_weights(layer.weights)
+    return _KerasLayerConfig(conf, layer.weights, layer.get_build_config(), type(layer))
+
+def _keras_layer_from_config(conf):
+    c = conf.layer_t.from_config(conf.conf)
+    c.build(conf.build_conf['input_shape'])
+    c.set_weights(conf.weights)
+    return c
+
+def _copy_keras_layer(layer):
+    if not isinstance(layer, tf.keras.Layer):
+        return layer.get_copy()
+
+    conf = _keras_layer_config(layer)
+    c = _keras_layer_from_config(conf)
     return c
 
 def copy_model(last_layer):
@@ -59,6 +76,18 @@ class AbstractLayer:
         c = copy(self)
         c.prior = None
         return c
+
+    def __getstate__(self):
+        return {
+            k: (v if not isinstance(v, tf.keras.Layer) else _keras_layer_to_config(v))
+            for k,v in self.__dict__.items()
+        }
+
+    def __setstate__(self, d):
+        self.__dict__ = {
+            k: v if type(v) != _KerasLayerConfig else _keras_layer_from_config(v)
+            for k,v in d.items()
+        }
 
 class Input(AbstractLayer):
     def __init__(self, out_features:tuple, **kwargs):
