@@ -15,7 +15,6 @@ from layers import (
     SkipConn,
     BatchNorm,
 )
-import copy
 from abc import abstractmethod
 import random
 

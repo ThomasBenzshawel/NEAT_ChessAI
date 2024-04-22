@@ -2,8 +2,11 @@ import numpy as np
 import problem_sim_general as sim
 import matplotlib.pyplot as plt
 from organism import NEATOrganism
-from joblib import Parallel, delayed
 import numpy as np
+import dill
+from functools import partial
+from multiprocessing import Pool
+from organism import NEATOrganism
 
 # Ecosystem and GA work
 
@@ -60,10 +63,15 @@ class Ecosystem():
 
 
     
-    def job_lib_generation(self, repeats=1, keep_best=True):
-        self.rewards = Parallel(n_jobs=-1)(
-            delayed(self.scoring_function)(x, y) for x, y in pairwise(self.population)
-        )
+    def parallel_generation(self, repeats=1, keep_best=True):
+        model_files = []
+        for i, organism in enumerate(self.population):
+            model_file = f"model_{i}.pkl"
+            organism.save(model_file)
+            model_files.append(model_file)
+
+        with Pool() as pool:
+            self.rewards = pool.starmap(self.scoring_function, pairwise(range(len(self.population))))
         self.rewards = [item for sublist in self.rewards for item in sublist]
 
         self.population = [self.population[x] for x in np.argsort(self.rewards)[::-1]]
@@ -107,7 +115,7 @@ def run_generations(ecosystem, generations, parallel=False):
         print("Population size is: ", ecosystem.population_size)
         
         if parallel:
-            ecosystem.job_lib_generation()
+            ecosystem.parallel_generation()
         else:
             ecosystem.generation()
         
@@ -135,12 +143,18 @@ def run_generations(ecosystem, generations, parallel=False):
 
 if __name__ == '__main__':
     TF_ENABLE_ONEDNN_OPTS=0
-    
+    parrallel = True
     #Change this depending on the type of simulation
     organism_creator = make_organism_generator((384,), 1)
 
-    scoring_function = lambda organism_1, organism_2 : sim.simulate_and_evaluate_organism(organism_1, organism_2, num_sims=1)
-    ecosystem = Ecosystem(organism_creator, scoring_function, population_size=2, holdout=0.1, mating=False)
+    def scoring_function_parallel(organism_1, organism_2):
+        return sim.parallel_simulate_and_evaluate_organism(organism_1, organism_2, num_sims=1)
 
-    generations = 1
+    if parrallel:
+        scoring_function = scoring_function_parallel
+    else:
+        scoring_function = lambda organism_1, organism_2 : sim.simulate_and_evaluate_organism(organism_1, organism_2, num_sims=1)
+    ecosystem = Ecosystem(organism_creator, scoring_function, population_size=4, holdout=0.1, mating=False)
+
+    generations = 2
     run_generations(ecosystem, generations, parallel=True)
