@@ -282,6 +282,7 @@ def captured_piece(board, move, scale=10):
     
 
 def simulate_and_evaluate(organism_1, organism_2, print_game=False, trials=1):
+    print("Starting simulation with ", trials, " trials")
     board = chess.Board()
     
     total_points_player_1 = 0
@@ -351,7 +352,12 @@ def simulate_and_evaluate(organism_1, organism_2, print_game=False, trials=1):
     return [total_points_player_1 / trials, total_points_player_2 / trials]
 
 def parallel_simulate_and_evaluate(organism_1_pkl, organism_2_pkl, num_sims=10, print_game=False):
+    print("Running parallel simulations inside chess_sim.py, with print_game = ", print_game)
+    print("Organism 1: ", organism_1_pkl)
+    print("Organism 2: ", organism_2_pkl)
     organism_1 = NEATOrganism.load(organism_1_pkl)
     organism_2 = NEATOrganism.load(organism_2_pkl)
+
+    print("organisms loaded")
     
     return simulate_and_evaluate(organism_1, organism_2, print_game=print_game, trials=num_sims)

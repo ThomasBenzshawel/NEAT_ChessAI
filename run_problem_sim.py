@@ -3,7 +3,6 @@ import problem_sim_general as sim
 import matplotlib.pyplot as plt
 from organism import NEATOrganism
 import numpy as np
-import dill
 from functools import partial
 from multiprocessing import Pool
 from organism import NEATOrganism
@@ -71,7 +70,7 @@ class Ecosystem():
             model_files.append(model_file)
 
         with Pool() as pool:
-            self.rewards = pool.starmap(self.scoring_function, pairwise(range(len(self.population))))
+            self.rewards = pool.starmap(self.scoring_function, pairwise(model_files))
         self.rewards = [item for sublist in self.rewards for item in sublist]
 
         self.population = [self.population[x] for x in np.argsort(self.rewards)[::-1]]
@@ -141,14 +140,15 @@ def run_generations(ecosystem, generations, parallel=False):
         # Saving the figure.
         plt.savefig("output_gen_" + str(i) + ".jpg")
 
+
+def scoring_function_parallel(organism_1, organism_2, num_sims=10):
+    return sim.parallel_simulate_and_evaluate_organism(organism_1, organism_2, num_sims=num_sims)
+
 if __name__ == '__main__':
     TF_ENABLE_ONEDNN_OPTS=0
     parrallel = True
     #Change this depending on the type of simulation
     organism_creator = make_organism_generator((384,), 1)
-
-    def scoring_function_parallel(organism_1, organism_2):
-        return sim.parallel_simulate_and_evaluate_organism(organism_1, organism_2, num_sims=1)
 
     if parrallel:
         scoring_function = scoring_function_parallel
@@ -157,4 +157,5 @@ if __name__ == '__main__':
     ecosystem = Ecosystem(organism_creator, scoring_function, population_size=4, holdout=0.1, mating=False)
 
     generations = 2
+    print("Running generations")
     run_generations(ecosystem, generations, parallel=True)

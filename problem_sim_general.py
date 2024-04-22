@@ -16,7 +16,8 @@ def simulate_and_evaluate_organism(organism_1, organism_2=None, num_sims=10, obj
     
 def parallel_simulate_and_evaluate_organism(organism_1, organism_2=None, num_sims=10, objective_function=None):
     if simulation_type == 'chess':
-        eval =  chess_sim.parallel_simulate_and_evaluate(organism_1, organism_2, num_sims=num_sim, print_game=True)
+        print("Running parallel simulations")
+        eval =  chess_sim.parallel_simulate_and_evaluate(organism_1, organism_2, num_sims=num_sims, print_game=True)
         return eval
     elif simulation_type == 'cars':
         eval = cars_sim.parallel_simulate_and_evaluate(organism_1, organism_2)
