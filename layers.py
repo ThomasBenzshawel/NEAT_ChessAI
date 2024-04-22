@@ -26,7 +26,10 @@ def _keras_layer_to_config(layer):
     conf = layer.get_config()
     if 'activation' in conf and type(conf['activation']) != str:
         conf['activation']['config'] = xelu
-    return _KerasLayerConfig(conf, layer.weights, layer.get_build_config(), type(layer))
+    build_conf = layer.get_build_config()
+    if type(build_conf['input_shape']) != tuple:
+        build_conf['input_shape'] = list(build_conf['input_shape'])
+    return _KerasLayerConfig(conf, layer.weights, build_conf, type(layer))
 
 def _keras_layer_from_config(conf):
     c = conf.layer_t.from_config(conf.conf)
