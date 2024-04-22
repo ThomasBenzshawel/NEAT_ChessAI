@@ -30,8 +30,6 @@ def _keras_layer_to_config(layer):
 
 def _keras_layer_from_config(conf):
     c = conf.layer_t.from_config(conf.conf)
-    #debugging
-    print(len(conf.build_conf['input_shape']))
     c.build(conf.build_conf['input_shape'])
     c.set_weights(conf.weights)
     return c
@@ -80,6 +78,10 @@ class AbstractLayer:
         return c
 
     def __getstate__(self):
+        input_shape = self.iter()[0].out_features
+        self.__call__([
+            [0]*input_shape
+        ])
         return {
             k: (v if not isinstance(v, tf.keras.Layer) else _keras_layer_to_config(v))
             for k,v in self.__dict__.items()
