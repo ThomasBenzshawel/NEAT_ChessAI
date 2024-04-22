@@ -105,14 +105,6 @@ def run_generations(ecosystem, generations, parallel=False):
     for i in range(generations):
         print("Starting generation ", i, " out of ", generations)
         print("Population size is: ", ecosystem.population_size)
-
-        #test saving
-        test = ecosystem.population[0]
-        print(test)
-
-        #test loading
-        loaded_org = NEATOrganism.load("model.pkl")
-        ecosystem.population[0] = loaded_org
         
         if parallel:
             ecosystem.job_lib_generation()
@@ -151,4 +143,4 @@ if __name__ == '__main__':
     ecosystem = Ecosystem(organism_creator, scoring_function, population_size=2, holdout=0.1, mating=False)
 
     generations = 1
-    run_generations(ecosystem, generations, parallel=False)
+    run_generations(ecosystem, generations, parallel=True)

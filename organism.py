@@ -1,6 +1,11 @@
 import numpy as np
-import cloudpickle as dill
 import layers
+import tensorflow as tf
+import random
+import pickle
+from layers import _keras_layer_from_config, _keras_layer_to_config, _KerasLayerConfig
+
+
 from layers import (
     AbstractLayer,
     Input,
@@ -42,12 +47,12 @@ class Organism:
             '_del_rate': self._del_rate
         }
         with open(filepath, 'wb') as file:
-            dill.dump(state, file)
+            pickle.dump(state, file)
 
     @staticmethod
     def load(filepath):
         with open(filepath, 'rb') as file:
-            state = dill.load(file)
+            state = pickle.load(file)
         organism = NEATOrganism(state['_n_inputs'], state['_n_outputs'])
         organism._learning_rate = state['_learning_rate']
         organism._layers = state['_layers']
@@ -252,3 +257,24 @@ class NEATOrganism(Organism):
 
     def mate(self, other):
         raise NotImplementedError
+    
+    # We do not need these methods for now but they may be useful in the future
+    # def __getstate__(self):
+    #     return {
+    #         k: (v if not isinstance(v, tf.keras.Layer) else _keras_layer_to_config(v))
+    #         for k,v in self.__dict__.items()
+    #     }
+    
+    # def __setstate__(self, d):
+    #     self.__dict__ = {
+    #         k: v if type(v) != _KerasLayerConfig else _keras_layer_from_config(v)
+    #         for k,v in d.items()
+    #     }
+
+# Testing pickling
+if __name__ == "__main__":
+    organism = NEATOrganism(10, 2)
+    organism.save('organism.pkl')
+    organism = NEATOrganism.load('organism.pkl')
+    test = np.zeros(10).reshape(1,-1)
+    print(organism.predict(test))

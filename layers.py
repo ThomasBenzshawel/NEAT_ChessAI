@@ -78,7 +78,7 @@ class AbstractLayer:
         return c
 
     def __getstate__(self):
-        input_shape = self.iter()[0].out_features
+        input_shape = self.iter()[0].out_features[0]
         self.__call__([
             [0]*input_shape
         ])
@@ -95,6 +95,8 @@ class AbstractLayer:
 
 class Input(AbstractLayer):
     def __init__(self, out_features:tuple, **kwargs):
+        if type(out_features) != tuple:
+            out_features = (out_features,)
         super().__init__(None, 0, out_features, kwargs=kwargs)
 
     def __call__(self, x):
@@ -294,7 +296,7 @@ if __name__ == '__main__':
     )
 
     #testing pickling
-    import dill as pickle
+    import pickle
     with open('model.pkl', 'wb') as f:
         pickle.dump(model, f)
 
