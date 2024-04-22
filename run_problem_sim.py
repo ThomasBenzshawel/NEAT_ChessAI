@@ -2,8 +2,7 @@ import numpy as np
 import problem_sim_general as sim
 import matplotlib.pyplot as plt
 from organism import NEATOrganism
-from multiprocessing import Pool
-import multiprocessing as mp
+from joblib import Parallel, delayed
 import numpy as np
 
 # Ecosystem and GA work
@@ -59,52 +58,32 @@ class Ecosystem():
             new_population[-1] = self.population[0]  # Ensure best organism survives
         self.population = new_population
 
-    def mp_generation(_self_, _repeats_=1, _keep_best_=True):
-        # make the population and score stuff array
-        population = np.array(_self_.population)  # parameters to send to simulate_and_evaluate_
 
-        n = population.shape[0]
-        num_processes = 4  # number of processes to use
+    
+    def job_lib_generation(self, repeats=1, keep_best=True):
+        self.rewards = Parallel(n_jobs=-1)(
+            delayed(self.scoring_function)(x, y) for x, y in pairwise(self.population)
+        )
+        self.rewards = [item for sublist in self.rewards for item in sublist]
 
-        # create a pool of worker processes
-        pool = Pool(processes=num_processes)
-
-        # split the population into chunks for each process
-        chunk_size = n // num_processes
-        population_chunks = [population[i:i + chunk_size] for i in range(0, n, chunk_size)]
-
-        # run the scoring function for each chunk of the population in parallel
-        results = pool.starmap(_self_.scoring_function, [(x, y) for chunk in population_chunks for x, y in pairwise(chunk)])
-
-        # flatten the results list
-        final_results = [item for sublist in results for item in sublist]
-        print (final_results)
-
-        _self_.rewards = [x.score for x in _self_.population]
-        _self_.population = [_self_.population[x] for x in np.argsort(_self_.rewards)[::-1]]
-        _self_.population_size = len(_self_.population)
+        self.population = [self.population[x] for x in np.argsort(self.rewards)[::-1]]
+        self.population_size = len(self.population)
 
         new_population = []
+        for i in range(self.population_size):
+            parent_1_idx = i % self.holdout
 
-        for i in range(_self_.population_size):
-            parent_1_idx = i % _self_.holdout
-            # print(parent_1_idx)
-            if _self_.mating:
-                parent_2_idx = min(_self_.population_size - 1, int(np.random.exponential(_self_.holdout)))
+            if self.mating:
+                parent_2_idx = min(self.population_size - 1, int(np.random.exponential(self.holdout)))
             else:
                 parent_2_idx = parent_1_idx
 
-            offspring = _self_.population[parent_1_idx].mate(_self_.population[parent_2_idx])
+            offspring = self.population[parent_1_idx].mate(self.population[parent_2_idx])
             new_population.append(offspring)
 
-        if _keep_best_:
-            new_population[-1] = _self_.population[0]  # Ensure best organism survives
-
-        _self_.population = new_population
-
-        # close the pool of worker processes
-        pool.close()
-        pool.join()
+        if keep_best:
+            new_population[-1] = self.population[0]  # Ensure best organism survives
+        self.population = new_population
 
     def get_best_organism(self, include_reward=False):
         # rewards = [np.mean(self.scoring_function(x)) for _ in range(repeats) for x in self.population]
@@ -117,7 +96,7 @@ class Ecosystem():
 def make_organism_generator(in_shape, out_shape):
     return lambda: NEATOrganism(in_shape, out_shape)
 
-def run_generations(ecosystem, generations):
+def run_generations(ecosystem, generations, parallel=False):
     print("Starting simulations")
     
     best_ai_list = []
@@ -126,8 +105,18 @@ def run_generations(ecosystem, generations):
     for i in range(generations):
         print("Starting generation ", i, " out of ", generations)
         print("Population size is: ", ecosystem.population_size)
+
+        #test saving
+        ecosystem.population[0].save("model.pkl")
+
+        #test loading
+        loaded_org = NEATOrganism.load("model.pkl")
+        ecosystem.population[0] = loaded_org
         
-        ecosystem.generation()
+        if parallel:
+            ecosystem.job_lib_generation()
+        else:
+            ecosystem.generation()
         
         best_ai = ecosystem.get_best_organism(include_reward=True)
         best_ai_models.append(best_ai[0])
@@ -157,8 +146,8 @@ if __name__ == '__main__':
     #Change this depending on the type of simulation
     organism_creator = make_organism_generator((384,), 1)
 
-    scoring_function = lambda organism_1, organism_2 : sim.simulate_and_evaluate_organism(organism_1, organism_2, num_sims=10, objective_function = lambda x: x)
-    ecosystem = Ecosystem(organism_creator, scoring_function, population_size=40, holdout=0.1, mating=True)
+    scoring_function = lambda organism_1, organism_2 : sim.simulate_and_evaluate_organism(organism_1, organism_2, num_sims=1)
+    ecosystem = Ecosystem(organism_creator, scoring_function, population_size=2, holdout=0.1, mating=False)
 
-    generations = 15
-    run_generations(ecosystem, generations)
+    generations = 1
+    run_generations(ecosystem, generations, parallel=False)

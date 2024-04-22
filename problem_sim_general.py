@@ -9,7 +9,7 @@ simulation_type = "chess"  # 'chess', 'cars'
 def simulate_and_evaluate_organism(organism_1, organism_2=None, num_sims=10, objective_function=None):
     if simulation_type == 'chess':
         eval =  chess_sim.simulate_and_evaluate(organism_1, organism_2, print_game=True)
-        return objective_function(eval)
+        return eval
     elif simulation_type == 'cars':
         eval = cars_sim.simulate_and_evaluate(organism_1, organism_2)
-        return objective_function(eval)
+        return eval
