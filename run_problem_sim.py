@@ -107,7 +107,8 @@ def run_generations(ecosystem, generations, parallel=False):
         print("Population size is: ", ecosystem.population_size)
 
         #test saving
-        ecosystem.population[0].save("model.pkl")
+        test = ecosystem.population[0]
+        print(test)
 
         #test loading
         loaded_org = NEATOrganism.load("model.pkl")

@@ -30,6 +30,8 @@ def _keras_layer_to_config(layer):
 
 def _keras_layer_from_config(conf):
     c = conf.layer_t.from_config(conf.conf)
+    #debugging
+    print(len(conf.build_conf['input_shape']))
     c.build(conf.build_conf['input_shape'])
     c.set_weights(conf.weights)
     return c
@@ -38,7 +40,7 @@ def _copy_keras_layer(layer):
     if not isinstance(layer, tf.keras.Layer):
         return layer.get_copy()
 
-    conf = _keras_layer_config(layer)
+    conf = _keras_layer_to_config(layer)
     c = _keras_layer_from_config(conf)
     return c
 
@@ -282,6 +284,21 @@ if __name__ == '__main__':
         ])
     )
     print(
+        'model_1: Should be same as last model_1 call:',
+        model([
+            [1,-5,3],
+            [-1,10,1]
+        ])
+    )
+
+    #testing pickling
+    import dill as pickle
+    with open('model.pkl', 'wb') as f:
+        pickle.dump(model, f)
+
+    with open('model.pkl', 'rb') as f:
+        model = pickle.load(f)
+    print( # should be same as last model_1 call
         'model_1: Should be same as last model_1 call:',
         model([
             [1,-5,3],
