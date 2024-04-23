@@ -141,7 +141,7 @@ def run_generations(ecosystem, generations, parallel=False):
         plt.savefig("output_gen_" + str(i) + ".jpg")
 
 
-def scoring_function_parallel(organism_1, organism_2, num_sims=10):
+def scoring_function_parallel(organism_1, organism_2, num_sims=2):
     return sim.parallel_simulate_and_evaluate_organism(organism_1, organism_2, num_sims=num_sims)
 
 if __name__ == '__main__':
@@ -157,9 +157,9 @@ if __name__ == '__main__':
     if parrallel:
         scoring_function = scoring_function_parallel
     else:
-        scoring_function = lambda organism_1, organism_2 : sim.simulate_and_evaluate_organism(organism_1, organism_2, num_sims=1)
-    ecosystem = Ecosystem(organism_creator, scoring_function, population_size=4, holdout=0.1, mating=False)
+        scoring_function = lambda organism_1, organism_2 : sim.simulate_and_evaluate_organism(organism_1, organism_2, num_sims=2)
+    ecosystem = Ecosystem(organism_creator, scoring_function, population_size=40, holdout=0.1, mating=False)
 
-    generations = 2
+    generations = 20
     print("Running generations")
     run_generations(ecosystem, generations, parallel=True)
