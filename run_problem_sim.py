@@ -3,7 +3,6 @@ import problem_sim_general as sim
 import matplotlib.pyplot as plt
 from organism import NEATOrganism
 import numpy as np
-from functools import partial
 from multiprocessing import Pool
 from organism import NEATOrganism
 
