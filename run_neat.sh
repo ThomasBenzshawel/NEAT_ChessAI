@@ -12,8 +12,7 @@
 
 
 SCRIPT_NAME="Neat Training"
-CONTAINER="/data/containers/msoe-tensorflow-23.05-tf2-py3.sif"
-
+source /usr/local/anaconda3/bin/activate neat_sim
 
 PYTHON_FILE="run_problem_sim.py"
 SCRIPT_ARGS=""
@@ -21,11 +20,6 @@ SCRIPT_ARGS=""
 
 ## SCRIPT
 echo "SBATCH SCRIPT: ${SCRIPT_NAME}"
-
-# Pip install the requirements
-pip install chess
-pip install abc
-
 
 srun hostname; pwd; date;
 srun singularity exec --nv -B /data:/data ${CONTAINER} python3 ${PYTHON_FILE} ${SCRIPT_ARGS}
