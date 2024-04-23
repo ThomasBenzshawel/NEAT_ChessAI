@@ -50,10 +50,10 @@ class Ecosystem():
 
             if self.mating:
                 parent_2_idx = min(self.population_size - 1, int(np.random.exponential(self.holdout)))
+                offspring = self.population[parent_1_idx].mate(self.population[parent_2_idx])
             else:
-                parent_2_idx = parent_1_idx
-
-            offspring = self.population[parent_1_idx].mate(self.population[parent_2_idx])
+                offspring = self.population[parent_1_idx]._copy()
+            
             new_population.append(offspring)
 
         if keep_best:
@@ -82,10 +82,11 @@ class Ecosystem():
 
             if self.mating:
                 parent_2_idx = min(self.population_size - 1, int(np.random.exponential(self.holdout)))
+                offspring = self.population[parent_1_idx].mate(self.population[parent_2_idx])
             else:
-                parent_2_idx = parent_1_idx
+                offspring = self.population[parent_1_idx]._copy()
 
-            offspring = self.population[parent_1_idx].mate(self.population[parent_2_idx])
+            
             new_population.append(offspring)
 
         if keep_best:
@@ -147,8 +148,12 @@ def scoring_function_parallel(organism_1, organism_2, num_sims=10):
 if __name__ == '__main__':
     TF_ENABLE_ONEDNN_OPTS=0
     parrallel = True
-    #Change this depending on the type of simulation
-    organism_creator = make_organism_generator((384,), 1)
+    #Change this depending on the type of 
+    # This is for chess
+    # organism_creator = make_organism_generator((384,), 1)
+
+    # This is for cars
+    organism_creator = make_organism_generator((1269,), 1)
 
     if parrallel:
         scoring_function = scoring_function_parallel
