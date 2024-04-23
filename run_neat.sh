@@ -21,7 +21,6 @@ SCRIPT_ARGS=""
 ## SCRIPT
 echo "SBATCH SCRIPT: ${SCRIPT_NAME}"
 
-srun hostname; pwd; date;
-srun singularity exec --nv -B /data:/data ${CONTAINER} python3 ${PYTHON_FILE} ${SCRIPT_ARGS}
+python3 run_problem_sim.py
 
 echo "END: " $SCRIPT_NAME
