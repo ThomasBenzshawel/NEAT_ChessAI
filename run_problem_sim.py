@@ -147,12 +147,13 @@ def scoring_function_parallel(organism_1, organism_2, num_sims=2):
 if __name__ == '__main__':
     TF_ENABLE_ONEDNN_OPTS=0
     parrallel = True
-    #Change this depending on the type of 
+    #Change this depending on the type of sim
+    
     # This is for chess
-    # organism_creator = make_organism_generator((384,), 1)
+    organism_creator = make_organism_generator((384,), 1)
 
     # This is for cars
-    organism_creator = make_organism_generator((1269,), 1)
+    # organism_creator = make_organism_generator((1269,), 1)
 
     if parrallel:
         scoring_function = scoring_function_parallel
