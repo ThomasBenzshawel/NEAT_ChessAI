@@ -3,7 +3,6 @@ import problem_sim_general as sim
 import matplotlib.pyplot as plt
 from organism import NEATOrganism
 import numpy as np
-from functools import partial
 from multiprocessing import Pool
 from organism import NEATOrganism
 
@@ -142,7 +141,7 @@ def run_generations(ecosystem, generations, parallel=False):
         plt.savefig("output_gen_" + str(i) + ".jpg")
 
 
-def scoring_function_parallel(organism_1, organism_2, num_sims=5):
+def scoring_function_parallel(organism_1, organism_2, num_sims=2):
     return sim.parallel_simulate_and_evaluate_organism(organism_1, organism_2, num_sims=num_sims)
 
 if __name__ == '__main__':
@@ -150,17 +149,17 @@ if __name__ == '__main__':
     #Change this depending on the type of sim
     
     # This is for chess
-    # organism_creator = make_organism_generator((384,), 1)
+    organism_creator = make_organism_generator((384,), 1)
 
     # This is for cars
-    organism_creator = make_organism_generator((1269,), 1)
+    # organism_creator = make_organism_generator((1269,), 1)
 
     if parrallel:
         scoring_function = scoring_function_parallel
     else:
-        scoring_function = lambda organism_1, organism_2 : sim.simulate_and_evaluate_organism(organism_1, organism_2, num_sims=1)
+        scoring_function = lambda organism_1, organism_2 : sim.simulate_and_evaluate_organism(organism_1, organism_2, num_sims=2)
     ecosystem = Ecosystem(organism_creator, scoring_function, population_size=40, holdout=0.1, mating=False)
 
-    generations = 10
+    generations = 20
     print("Running generations")
     run_generations(ecosystem, generations, parallel=True)

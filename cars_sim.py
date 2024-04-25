@@ -16,17 +16,17 @@ def simulate_and_evaluate(organism_1, organism_2, print_game=False, trials=1):
     organism_1.score = 0
     organism_2.score = 0
 
-    print("Data loaded")
+    # print("Data loaded")
     goal = car_data["sellingprice"].astype(float)
-    print("Goal loaded")
+    # print("Goal loaded")
     car_data = car_data.drop(columns=["sellingprice"])
 
     X = np.array(car_data)
-    print("Data converted to numpy")
+    # print("Data converted to numpy")
 
     y = goal.values
 
-    print("Data split")
+    # print("Data split")
 
     #evaluate the organisms in estimating car prices
 
@@ -43,15 +43,16 @@ def simulate_and_evaluate(organism_1, organism_2, print_game=False, trials=1):
         organism_1.score += -1 * np.sum(np.abs(y[start:end] - organism_1.predict(X[start:end])))
         organism_2.score += -1 * np.sum(np.abs(y[start:end] - organism_2.predict(X[start:end])))
 
+    print("Organisms evaluated")
     return [organism_1.score, organism_2.score]
 
 def parallel_simulate_and_evaluate(organism_1_pkl, organism_2_pkl, num_sims=10, print_game=False):
-    print("Running parallel simulations inside chess_sim.py, with print_game = ", print_game)
-    print("Organism 1: ", organism_1_pkl)
-    print("Organism 2: ", organism_2_pkl)
+    # print("Running parallel simulations with print_game = ", print_game)
+    # print("Organism 1: ", organism_1_pkl)
+    # print("Organism 2: ", organism_2_pkl)
     organism_1 = NEATOrganism.load(organism_1_pkl)
     organism_2 = NEATOrganism.load(organism_2_pkl)
 
-    print("organisms loaded")
+    # print("organisms loaded")
     
     return simulate_and_evaluate(organism_1, organism_2, print_game=print_game, trials=num_sims)

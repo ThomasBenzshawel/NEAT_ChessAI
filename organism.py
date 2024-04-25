@@ -1,9 +1,7 @@
 import numpy as np
 import layers
-import tensorflow as tf
 import random
 import pickle
-from layers import _keras_layer_from_config, _keras_layer_to_config, _KerasLayerConfig
 
 
 from layers import (
@@ -256,19 +254,6 @@ class NEATOrganism(Organism):
 
     def mate(self, other):
         raise NotImplementedError
-    
-    # We do not need these methods for now but they may be useful in the future
-    # def __getstate__(self):
-    #     return {
-    #         k: (v if not isinstance(v, tf.keras.Layer) else _keras_layer_to_config(v))
-    #         for k,v in self.__dict__.items()
-    #     }
-    
-    # def __setstate__(self, d):
-    #     self.__dict__ = {
-    #         k: v if type(v) != _KerasLayerConfig else _keras_layer_from_config(v)
-    #         for k,v in d.items()
-    #     }
 
 # Testing pickling
 if __name__ == "__main__":
