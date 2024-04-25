@@ -6,7 +6,7 @@ import pandas as pd
 # Input shape must be 1269
 
 def simulate_and_evaluate(organism_1, organism_2, print_game=False, trials=1):
-    # print("Starting car price simulation")
+    print("Starting car price simulation")
 
     #load the data
     car_data = pd.read_csv('./data/car_prices_processed.csv')
@@ -43,6 +43,7 @@ def simulate_and_evaluate(organism_1, organism_2, print_game=False, trials=1):
         organism_1.score += -1 * np.sum(np.abs(y[start:end] - organism_1.predict(X[start:end])))
         organism_2.score += -1 * np.sum(np.abs(y[start:end] - organism_2.predict(X[start:end])))
 
+    print("Organisms evaluated")
     return [organism_1.score, organism_2.score]
 
 def parallel_simulate_and_evaluate(organism_1_pkl, organism_2_pkl, num_sims=10, print_game=False):
