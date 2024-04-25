@@ -142,13 +142,13 @@ def run_generations(ecosystem, generations, parallel=False):
         plt.savefig("output_gen_" + str(i) + ".jpg")
 
 
-def scoring_function_parallel(organism_1, organism_2, num_sims=10):
+def scoring_function_parallel(organism_1, organism_2, num_sims=5):
     return sim.parallel_simulate_and_evaluate_organism(organism_1, organism_2, num_sims=num_sims)
 
 if __name__ == '__main__':
-    TF_ENABLE_ONEDNN_OPTS=0
     parrallel = True
-    #Change this depending on the type of 
+    #Change this depending on the type of sim
+    
     # This is for chess
     # organism_creator = make_organism_generator((384,), 1)
 
@@ -159,8 +159,8 @@ if __name__ == '__main__':
         scoring_function = scoring_function_parallel
     else:
         scoring_function = lambda organism_1, organism_2 : sim.simulate_and_evaluate_organism(organism_1, organism_2, num_sims=1)
-    ecosystem = Ecosystem(organism_creator, scoring_function, population_size=4, holdout=0.1, mating=False)
+    ecosystem = Ecosystem(organism_creator, scoring_function, population_size=40, holdout=0.1, mating=False)
 
-    generations = 2
+    generations = 10
     print("Running generations")
     run_generations(ecosystem, generations, parallel=True)
