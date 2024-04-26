@@ -181,7 +181,7 @@ class NEATOrganism(Organism):
             self._layer_constraints[self._layer_str_map[BatchNorm]] = {}
 
         if not "activations" in constraints.keys():
-            self._layer_constraints['activations'] = ['xelu', 'sigmoid']
+            self._layer_constraints['activations'] = ['gelu', 'sigmoid']
 
         m_input = Input(n_inputs)
         self._layers.append(m_input)
@@ -204,47 +204,48 @@ class NEATOrganism(Organism):
         """
         Generate and return a child of this organism with some modifications.
         """
-        cop = self._copy()
         layers = []
-        for l in cop._layers:
+        for l in self._layers:
             layers.append(l.update())
-        cop._layers = layers
+        self._layers = layers
 
         # deletion step
         roll = random.random()
         if roll < self._del_rate:
-            loc = random.randrange(1,len(self._layers)-1)
-            cop._layers[loc+1].prior = cop._layers[loc].prior
-            cop._layers.pop(loc)
+            loc = random.randrange(1,len(self._layers)-1, 1)
+            self._layers[loc+1].prior = self._layers[loc].prior
+            self._layers.pop(loc)
         
         # insertion step
         roll = random.random()
         if roll < self._add_rate:
-            loc = random.randrange(1,len(cop._layers)-1)
-            layer = random.choice(cop._layer_options)
-            constraints = cop._layer_constraints[self._layer_str_map[layer]]
+            if len(self._layers) == 2:
+                loc = 1
+            loc = random.randrange(1,len(self._layers)-1, 1)
+            layer = random.choice(self._layer_options)
+            constraints = self._layer_constraints[self._layer_str_map[layer]]
             if not layer == SkipConn:
                 n_node_min, n_node_max = constraints['n_nodes'] if 'n_nodes' in constraints.keys() else (0,0)
                 insert = layer(
-                    prior=cop._layers[loc-1],
+                    prior=self._layers[loc-1],
                     out_features=random.randint(n_node_min, n_node_max),
-                    learning_rate=cop._learning_rate,
+                    learning_rate=self._learning_rate,
                     kwargs=constraints[self._layer_str_map[layer]]
                 )
             else: # selected layer type is a skip connection
-                skip_from = random.choice(cop._layers[:loc])
+                skip_from = random.choice(self._layers[:loc])
                 insert = SkipConn(
-                    prior=cop._layers[loc-1],
+                    prior=self._layers[loc-1],
                     out_features=random.randint(n_node_min, n_node_max),
-                    learning_rate=cop._learning_rate,
+                    learning_rate=self._learning_rate,
                     skip_from=skip_from,
-                    kwargs=cop._layer_constraints[self._layer_str_map[SkipConn]]
+                    kwargs=self._layer_constraints[self._layer_str_map[SkipConn]]
                 )
             
-            cop._layers.insert(loc, insert)
-            cop._layers[loc+1].prior = insert
+            self._layers.insert(loc, insert)
+            self._layers[loc+1].prior = insert
             
-        return cop
+        return self
     
     def _copy(self):
         c = NEATOrganism(self._n_inputs,
