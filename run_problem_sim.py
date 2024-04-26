@@ -14,7 +14,7 @@ def pairwise(iterable):
     return zip(a, a)
 
 class Ecosystem():
-    def __init__(self, orginism_creator, scoring_function, population_size=100, holdout='sqrt', mating=True):
+    def __init__(self, orginism_creator, scoring_function, population_size=100, holdout='sqrt', mating=True, test_eval=False):
         """
         origanism_creator must be a function to produce Organisms, used for the original population
         scoring_function must be a function which accepts an Organism as input and returns a float
@@ -25,6 +25,7 @@ class Ecosystem():
         self.mating = mating
 
         self.rewards = []
+        self.test_eval = test_eval
 
         self.scoring_function = scoring_function
         if holdout == 'sqrt':
@@ -54,6 +55,11 @@ class Ecosystem():
                 offspring = self.population[parent_1_idx]._copy()
             
             new_population.append(offspring)
+
+        if self.test_eval:
+            # Evaluate the best organism on the test set
+            test_score = self.scoring_function(self.population[0], test=True)
+            print("Test score: ", test_score)
 
         if keep_best:
             new_population[-1] = self.population[0]  # Ensure best organism survives
@@ -141,8 +147,13 @@ def run_generations(ecosystem, generations, parallel=False):
         plt.savefig("output_gen_" + str(i) + ".jpg")
 
 
-def scoring_function_parallel(organism_1, organism_2, num_sims=2):
-    return sim.parallel_simulate_and_evaluate_organism(organism_1, organism_2, num_sims=num_sims)
+def scoring_function_parallel(organism_1, organism_2, num_sims=2, test=False):
+    return sim.parallel_simulate_and_evaluate_organism(organism_1, organism_2, num_sims=num_sims, test=test)
+
+
+def make_organism_generator_transfer(in_shape, out_shape, model_file):
+    return lambda: NEATOrganism(in_shape, out_shape, model_file=model_file)
+
 
 if __name__ == '__main__':
     parrallel = True
@@ -157,8 +168,8 @@ if __name__ == '__main__':
     if parrallel:
         scoring_function = scoring_function_parallel
     else:
-        scoring_function = lambda organism_1, organism_2 : sim.simulate_and_evaluate_organism(organism_1, organism_2, num_sims=2)
-    ecosystem = Ecosystem(organism_creator, scoring_function, population_size=40, holdout=0.1, mating=False)
+        scoring_function = lambda organism_1, organism_2 : sim.simulate_and_evaluate_organism(organism_1, organism_2, num_sims=2, test=False)
+    ecosystem = Ecosystem(organism_creator, scoring_function, population_size=40, holdout=0.1, mating=False, test_eval=False)
 
     generations = 20
     print("Running generations")

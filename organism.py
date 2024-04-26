@@ -83,6 +83,7 @@ class NEATOrganism(Organism):
                  learning_rate=.1,
                  add_rate=.1,
                  del_rate=.1,
+                 model_file=None,
                  **constraints):
         """
         Initialize an organism for a Neuro-evolution by Augmented Topologies (NEAT) genetic algorithm.
@@ -130,6 +131,10 @@ class NEATOrganism(Organism):
             batchnorm: dict[str:any]
                 There are currently no contraints supported for this layer type.
         """
+        if model_file is not None:
+            self.load(model_file)
+            return
+        
         self._layers = []
         self._layer_options = []
         self._learning_rate = learning_rate

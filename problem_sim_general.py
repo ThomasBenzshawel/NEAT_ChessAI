@@ -6,20 +6,20 @@ import cars_sim
 simulation_type = "chess"  # 'chess', 'cars'
 
 # This function should run the simulation and compare the perfomance of the organism to the baseline or other organism
-def simulate_and_evaluate_organism(organism_1, organism_2=None, num_sims=10, objective_function=None):
+def simulate_and_evaluate_organism(organism_1, organism_2=None, num_sims=10, objective_function=None, test=False):
     if simulation_type == 'chess':
         eval =  chess_sim.simulate_and_evaluate(organism_1, organism_2, print_game=False)
         return eval
     elif simulation_type == 'cars':
-        eval = cars_sim.simulate_and_evaluate(organism_1, organism_2)
+        eval = cars_sim.simulate_and_evaluate(organism_1, organism_2, test=test)
         return eval
     
-def parallel_simulate_and_evaluate_organism(organism_1, organism_2=None, num_sims=10, objective_function=None):
+def parallel_simulate_and_evaluate_organism(organism_1, organism_2=None, num_sims=10, objective_function=None, test=False):
     if simulation_type == 'chess':
         print("Running parallel simulations")
         eval =  chess_sim.parallel_simulate_and_evaluate(organism_1, organism_2, num_sims=num_sims, print_game=False)
         return eval
     elif simulation_type == 'cars':
-        eval = cars_sim.parallel_simulate_and_evaluate(organism_1, organism_2)
+        eval = cars_sim.parallel_simulate_and_evaluate(organism_1, organism_2, test=test)
         return eval
     
