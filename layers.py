@@ -64,6 +64,12 @@ class AbstractLayer:
         # if self.activation == 'xelu':
         #     self.activation = xelu
 
+    def _init_shapes(self):
+        input_shape = self.iter()[0].out_features[0]
+        self.__call__([
+            [0]*input_shape
+        ])
+
     def update(self):
         pass
 
@@ -81,10 +87,6 @@ class AbstractLayer:
         return c
 
     def __getstate__(self):
-        input_shape = self.iter()[0].out_features[0]
-        self.__call__([
-            [0]*input_shape
-        ])
         return {
             k: (v if not isinstance(v, tf.keras.Layer) else _keras_layer_to_config(v))
             for k,v in self.__dict__.items()
@@ -101,6 +103,8 @@ class Input(AbstractLayer):
         if type(out_features) != tuple:
             out_features = (out_features,)
         super().__init__(None, 0, out_features, kwargs=kwargs)
+        
+        self._init_shapes()
 
     def __call__(self, x):
         x = tf.constant(x, dtype=float)
@@ -116,6 +120,8 @@ class Dense(AbstractLayer):
     def __init__(self, prior:AbstractLayer, learning_rate:float, out_features:int, allowed_activations=None, **kwargs):
         super().__init__(prior, learning_rate, out_features, allowed_activations, kwargs=kwargs)
         self.layer = tf.keras.layers.Dense(out_features, activation=self.activation)
+
+        self._init_shapes()
 
     def update(self):
         _update_tf_weights(self.layer, self.learning_rate)
@@ -133,6 +139,8 @@ class Conv(AbstractLayer):
         kernel_size = int(prior.out_features - out_features + 1)
         super().__init__(prior, learning_rate, out_features, allowed_activations, kwargs=kwargs)
         self.layer = tf.keras.layers.Conv1D(1, kernel_size, data_format='channels_last', activation=self.activation)
+
+        self._init_shapes()
 
     def update(self):
         _update_tf_weights(self.layer, self.learning_rate)
@@ -159,6 +167,8 @@ class Attn(AbstractLayer):
         self.W_q = tf.keras.layers.Dense(out_features, activation=self.activation)
         self.W_k = tf.keras.layers.Dense(out_features, activation=self.activation)
         self.W_v = tf.keras.layers.Dense(out_features, activation=self.activation)
+
+        self._init_shapes()
 
     def update(self):
         _update_tf_weights(self.W_q, self.learning_rate)
@@ -189,6 +199,8 @@ class BatchNorm(AbstractLayer):
         self.gamma = np.log(np.e - 1)
         self.beta = 0
 
+        self._init_shapes()
+
     def update(self):
         self.beta += self.learning_rate*np.random.normal()
         self.gamma += self.learning_rate*np.random.normal()
@@ -211,6 +223,8 @@ class SkipConn(AbstractLayer):
         self.skip_to_out = tf.keras.layers.Dense(out_features, activation=self.activation)
         self.flatten = tf.keras.layers.Flatten()
         self.skip_from = skip_from
+
+        self._init_shapes()
 
     def update(self):
         _update_tf_weights(self.prior_to_out, self.learning_rate)
