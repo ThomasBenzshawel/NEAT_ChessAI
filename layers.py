@@ -38,7 +38,7 @@ def _keras_layer_from_config(conf):
     return c
 
 def _copy_keras_layer(layer):
-    if not isinstance(layer, tf.keras.Layer):
+    if not isinstance(layer, tf.keras.layers.Layer):
         return layer.get_copy()
 
     conf = _keras_layer_to_config(layer)
@@ -88,7 +88,7 @@ class AbstractLayer:
 
     def __getstate__(self):
         return {
-            k: (v if not isinstance(v, tf.keras.Layer) else _keras_layer_to_config(v))
+            k: (v if not isinstance(v, tf.keras.layers.Layer) else _keras_layer_to_config(v))
             for k,v in self.__dict__.items()
         }
 
