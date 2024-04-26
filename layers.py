@@ -6,8 +6,8 @@ from dataclasses import dataclass
 
 # Using this in place of RELU.
 # It's like RELU, but it isn't exactly 0 for x<0, so it's differentiable (or traversable)
-def xelu(x):
-    return x / (np.exp(-x) + 1)
+# def xelu(x):
+#     return x / (np.exp(-x) + 1)
 
 def _update_tf_weights(layer, learning_rate):
     layer.set_weights([
@@ -24,8 +24,8 @@ class _KerasLayerConfig:
 
 def _keras_layer_to_config(layer):
     conf = layer.get_config()
-    if 'activation' in conf and type(conf['activation']) != str:
-        conf['activation']['config'] = xelu
+    # if 'activation' in conf and type(conf['activation']) != str:
+    #     conf['activation']['config'] = xelu
     build_conf = layer.get_build_config()
     if type(build_conf['input_shape']) != tuple:
         build_conf['input_shape'] = list(build_conf['input_shape'])
@@ -59,10 +59,10 @@ class AbstractLayer:
         self.out_features = out_features
         self.learning_rate = learning_rate
         if allowed_activations is None:
-            allowed_activations = ['xelu', 'sigmoid']
+            allowed_activations = ['gelu', 'sigmoid']
         self.activation = random.choice(allowed_activations)
-        if self.activation == 'xelu':
-            self.activation = xelu
+        # if self.activation == 'xelu':
+        #     self.activation = xelu
 
     def update(self):
         pass
