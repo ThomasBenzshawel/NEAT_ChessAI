@@ -120,17 +120,17 @@ class AbstractLayer:
 
 class Input(AbstractLayer):
     def __init__(self, out_features:tuple, **kwargs):
-        if type(out_features) != tuple:
-            out_features = (out_features,)
+        # if type(out_features) != tuple:
+        #     out_features = (out_features,)
         super().__init__(None, 0, out_features, kwargs=kwargs)
         
         self._init_shapes()
 
     def __call__(self, x):
         x = tf.constant(x, dtype=float)
-        if len(x.shape) < 2 or x.shape[1:] != self.out_features:
-            out_shape_msg = ', '.join([str(d) for d in self.out_features])
-            raise ValueError(f'Expected input shape (batch_size, {out_shape_msg}), but got shape: {x.shape}')
+        # if len(x.shape) < 2 or x.shape[1:] != self.out_features:
+        #     out_shape_msg = ', '.join([str(d) for d in self.out_features])
+        #     raise ValueError(f'Expected input shape (batch_size, {out_shape_msg}), but got shape: {x.shape}')
         return x
 
     def iter(self):
