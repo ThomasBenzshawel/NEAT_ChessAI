@@ -30,13 +30,6 @@ def _keras_layer_to_config(layer, shape):
     # if 'activation' in conf and type(conf['activation']) != str:
     #     conf['activation']['config'] = xelu
     build_conf = layer.get_build_config()
-    if build_conf is None:
-        input_shape = layer.input_shape
-        if not isinstance(input_shape, tuple):
-            input_shape = (input_shape,)
-        build_conf = {
-                    "input_shape": intput_shape,
-                }
             
     if type(build_conf['input_shape']) != tuple:
         build_conf['input_shape'] = list(build_conf['input_shape'])
@@ -78,7 +71,7 @@ class AbstractLayer:
             self.out_features = self.out_features[0]
 
     def _init_shapes(self):
-        input_shape = self.iter()[0].out_features
+        input_shape = self.prior.out_features
         if not isinstance(input_shape, tuple):
             input_shape = (input_shape,)
     
@@ -126,7 +119,8 @@ class Input(AbstractLayer):
         #     out_features = (out_features,)
         super().__init__(None, 0, out_features, kwargs=kwargs)
         
-        self._init_shapes()
+    def _init_shapes(self):
+        pass
 
     def __call__(self, x):
         x = tf.constant(x, dtype=float)

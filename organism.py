@@ -233,7 +233,7 @@ class NEATOrganism(Organism):
             # print("Previous layer output:", self._layers[loc-1].out_features)
             # print("Next layer:", self._layers[loc])
             constraints = self._layer_constraints[self._layer_str_map[layer]]
-            n_node_min, n_node_max = constraints['n_nodes'] if 'n_nodes' in constraints.keys() else (self._layers[loc-1].out_features[0],self._layers[loc-1].out_features[0])
+            n_node_min, n_node_max = constraints['n_nodes'] if 'n_nodes' in constraints.keys() else (self._layers[loc-1].out_features,self._layers[loc-1].out_features)
             # print(f"Min out_features: {n_node_min}\tMax out_features: {n_node_max}")
             out_features = random.randint(n_node_min, n_node_max)
             # print("Selected output features:", out_features)
@@ -277,11 +277,20 @@ class NEATOrganism(Organism):
 
 # Testing pickling
 if __name__ == "__main__":
-    organism = NEATOrganism(10, 2, add_rate=1, activations=['sigmoid'], options=['dense', 'attn', 'skipconn', 'batchnorm'])
-    for i in range(4):
+    organism = NEATOrganism(10, 1, add_rate=1, activations=['sigmoid'], options=['dense', 'skipconn'])
+    test = np.zeros(10).reshape(1,-1)
+    print(test.shape)
+    print(organism.predict(test))
+
+    organism.save('organism.pkl')
+    organism = NEATOrganism.load('organism.pkl')
+    for i in range(1):
         organism.mutate()
     print("Layers after mutation:", [str(layer) for layer in organism._layers])
+    print("HEYYYYYYYYYYYYYYYYYYYYYYOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO", str(organism._layers[-1].out_features))
+    print("Testing input of output", organism._layers[-1].prior.out_features)
     # organism.save('organism.pkl')
     # organism = NEATOrganism.load('organism.pkl')
     test = np.zeros(10).reshape(1,-1)
+    print(test.shape)
     print(organism.predict(test))
