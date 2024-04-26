@@ -74,6 +74,7 @@ class AbstractLayer:
         self.activation = random.choice(allowed_activations)
         # if self.activation == 'xelu':
         #     self.activation = xelu
+        assert type(self.out_features) == int
 
     def _init_shapes(self):
         input_shape = self.iter()[0].out_features
