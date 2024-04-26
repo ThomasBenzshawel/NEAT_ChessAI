@@ -145,7 +145,6 @@ def scoring_function_parallel(organism_1, organism_2, num_sims=2):
     return sim.parallel_simulate_and_evaluate_organism(organism_1, organism_2, num_sims=num_sims)
 
 if __name__ == '__main__':
-    TF_ENABLE_ONEDNN_OPTS=0
     parrallel = True
     #Change this depending on the type of sim
 
