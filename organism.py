@@ -134,7 +134,7 @@ class NEATOrganism(Organism):
         if model_file is not None:
             self.load(model_file)
             return
-        
+
         self._layers = []
         self._layer_options = []
         self._learning_rate = learning_rate
@@ -185,7 +185,11 @@ class NEATOrganism(Organism):
 
         m_input = Input(n_inputs)
         self._layers.append(m_input)
-        self._layers.append(Dense(m_input, learning_rate, n_outputs))
+        self._layers.append(Dense(m_input, learning_rate, n_outputs, allowed_activations=self._layer_constraints['activations']))
+
+        print("Organism initialized")
+        print(f"{self._layer_constraints=}")
+        print(f"{self._layer_options=}")
     
     def predict(self, state):
         """
@@ -204,42 +208,52 @@ class NEATOrganism(Organism):
         """
         Generate and return a child of this organism with some modifications.
         """
-        layers = []
         for l in self._layers:
-            layers.append(l.update())
-        self._layers = layers
+            l.update()
 
         # deletion step
-        roll = random.random()
-        if roll < self._del_rate:
-            loc = random.randrange(1,len(self._layers)-1, 1)
-            self._layers[loc+1].prior = self._layers[loc].prior
-            self._layers.pop(loc)
+        # Don't delete any layers if there is only an input and output
+        if len(self._layers) > 2:
+            roll = random.random()
+            if roll < self._del_rate:
+                loc = random.randrange(1,len(self._layers)-1, 1)
+                self._layers[loc+1].prior = self._layers[loc].prior
+                self._layers.pop(loc)
         
         # insertion step
         roll = random.random()
         if roll < self._add_rate:
             if len(self._layers) == 2:
                 loc = 1
-            loc = random.randrange(1,len(self._layers)-1, 1)
+            else:
+                loc = random.randrange(1,len(self._layers)-1, 1)
+            # print("Selected location:", loc)
             layer = random.choice(self._layer_options)
+            # print("Layer type selected:", layer)
+            # print("Previous layer output:", self._layers[loc-1].out_features)
+            # print("Next layer:", self._layers[loc])
             constraints = self._layer_constraints[self._layer_str_map[layer]]
+            n_node_min, n_node_max = constraints['n_nodes'] if 'n_nodes' in constraints.keys() else (self._layers[loc-1].out_features[0],self._layers[loc-1].out_features[0])
+            # print(f"Min out_features: {n_node_min}\tMax out_features: {n_node_max}")
+            out_features = random.randint(n_node_min, n_node_max)
+            # print("Selected output features:", out_features)
             if not layer == SkipConn:
-                n_node_min, n_node_max = constraints['n_nodes'] if 'n_nodes' in constraints.keys() else (0,0)
                 insert = layer(
                     prior=self._layers[loc-1],
-                    out_features=random.randint(n_node_min, n_node_max),
+                    out_features=out_features,
                     learning_rate=self._learning_rate,
-                    kwargs=constraints[self._layer_str_map[layer]]
+                    allowed_activations=self._layer_constraints['activations'],
+                    kwargs=constraints
                 )
             else: # selected layer type is a skip connection
                 skip_from = random.choice(self._layers[:loc])
                 insert = SkipConn(
                     prior=self._layers[loc-1],
-                    out_features=random.randint(n_node_min, n_node_max),
+                    out_features=out_features,
                     learning_rate=self._learning_rate,
                     skip_from=skip_from,
-                    kwargs=self._layer_constraints[self._layer_str_map[SkipConn]]
+                    allowed_activations=self._layer_constraints['activations'],
+                    kwargs=constraints
                 )
             
             self._layers.insert(loc, insert)
@@ -263,8 +277,11 @@ class NEATOrganism(Organism):
 
 # Testing pickling
 if __name__ == "__main__":
-    organism = NEATOrganism(10, 2)
-    organism.save('organism.pkl')
-    organism = NEATOrganism.load('organism.pkl')
+    organism = NEATOrganism(10, 2, add_rate=1, activations=['sigmoid'], options=['dense', 'attn', 'skipconn', 'batchnorm'])
+    for i in range(4):
+        organism.mutate()
+    print("Layers after mutation:", [str(layer) for layer in organism._layers])
+    # organism.save('organism.pkl')
+    # organism = NEATOrganism.load('organism.pkl')
     test = np.zeros(10).reshape(1,-1)
     print(organism.predict(test))
