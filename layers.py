@@ -70,7 +70,7 @@ class AbstractLayer:
         self.out_features = out_features
         self.learning_rate = learning_rate
         if allowed_activations is None:
-            allowed_activations = ['xelu', 'sigmoid']
+            allowed_activations = ['gelu', 'sigmoid']
         self.activation = random.choice(allowed_activations)
         # if self.activation == 'xelu':
         #     self.activation = xelu
