@@ -181,7 +181,7 @@ class NEATOrganism(Organism):
             self._layer_constraints[self._layer_str_map[BatchNorm]] = {}
 
         if not "activations" in constraints.keys():
-            self._layer_constraints['activations'] = ['gelu', 'sigmoid']
+            self._layer_constraints['activations'] = ['xelu', 'sigmoid']
 
         m_input = Input(n_inputs)
         self._layers.append(m_input)
