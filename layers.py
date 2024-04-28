@@ -1,87 +1,28 @@
 import numpy as np
-import tensorflow as tf
 import random
-from copy import copy
-from dataclasses import dataclass
-
-# Using this in place of RELU.
-# It's like RELU, but it isn't exactly 0 for x<0, so it's differentiable (or traversable)
-# def xelu(x):
-#     return x / (np.exp(-x) + 1)
-
-def _update_tf_weights(layer, learning_rate):
-    layer.set_weights([
-        w + learning_rate*tf.random.normal(w.shape)
-        for w in layer.weights
-    ])
-
-@dataclass
-class _KerasLayerConfig:
-    conf: dict
-    weights: list
-    build_conf: dict
-    layer_t: type
-
-def _keras_layer_to_config(layer, shape):
-    input_shape = (1, shape[0])
-    input_data = tf.random.normal(shape=input_shape)
-    layer(input_data)
-    conf = layer.get_config()
-    # if 'activation' in conf and type(conf['activation']) != str:
-    #     conf['activation']['config'] = xelu
-    build_conf = layer.get_build_config()
-            
-    if type(build_conf['input_shape']) != tuple:
-        build_conf['input_shape'] = list(build_conf['input_shape'])
-    return _KerasLayerConfig(conf, layer.weights, build_conf, type(layer))
-
-def _keras_layer_from_config(conf):
-    c = conf.layer_t.from_config(conf.conf)
-    c.build(conf.build_conf['input_shape'])
-    c.set_weights(conf.weights)
-    return c
-
-def _copy_keras_layer(layer):
-    if not isinstance(layer, tf.keras.layers.Layer):
-        return layer.get_copy()
-
-    conf = _keras_layer_to_config(layer)
-    c = _keras_layer_from_config(conf)
-    return c
+import pickle
 
 def copy_model(last_layer):
-    c = [l.get_copy() for l in last_layer.iter()]
-    for i in range(len(c)-1):
-        c[i+1].prior = c[i]
-        if type(c[i+1]) is SkipConn:
-            c[i+1].skip_from = c[c[i+1].skip_from]
-    return c
+    return pickle.loads(pickle.dumps(last_layer))
+
+def _update_weights(w, r):
+    w += r*np.random.normal(size=w.shape)
+
+def softmax(xs):
+    xs = np.exp(xs)
+    return xs / xs.sum(axis=-1, keepdims=True)
 
 class AbstractLayer:
     def __init__(self, prior:"AbstractLayer", learning_rate:float, out_features:int, allowed_activations:list[str]=None, **kwargs):
+        assert type(out_features) == int # No longer doing multidim input for now
+
         self.prior = prior
         self.out_features = out_features
         self.learning_rate = learning_rate
+
         if allowed_activations is None:
-            allowed_activations = ['gelu', 'sigmoid']
+            allowed_activations = ['xelu', 'sigmoid']
         self.activation = random.choice(allowed_activations)
-        # if self.activation == 'xelu':
-        #     self.activation = xelu
-        if type(self.out_features) != int:
-            self.out_features = self.out_features[0]
-
-    def _init_shapes(self):
-        input_shape = self.prior.out_features
-        if not isinstance(input_shape, tuple):
-            input_shape = (input_shape,)
-    
-        # Create some dummy input data with the expected shape and datatype
-        dummy_input = tf.random.normal(shape=(1, *input_shape))
-        
-        # Call the layer with the dummy input
-        self(dummy_input)
-
-        return input_shape
 
     def update(self):
         pass
@@ -93,40 +34,21 @@ class AbstractLayer:
         if ret is None:
             ret = [self]
         return self.prior.iter() + ret
-
-    def get_copy(self):
-        
-        c = copy(self)
-        c.prior = None
-        return c
-
-    def __getstate__(self):
-        shape = self._init_shapes()
+    
+    def _activation(self):
         return {
-            k: (v if not isinstance(v, tf.keras.layers.Layer) else _keras_layer_to_config(v, shape))
-            for k,v in self.__dict__.items()
-        }
-
-    def __setstate__(self, d):
-        self.__dict__ = {
-            k: v if type(v) != _KerasLayerConfig else _keras_layer_from_config(v)
-            for k,v in d.items()
-        }
+            'xelu': lambda x: x/(1+np.exp(-x)),
+            'sigmoid': lambda x: 1/(1+np.exp(-x))
+        }[self.activation]
 
 class Input(AbstractLayer):
-    def __init__(self, out_features:tuple, **kwargs):
-        # if type(out_features) != tuple:
-        #     out_features = (out_features,)
+    def __init__(self, out_features:int, **kwargs):
         super().__init__(None, 0, out_features, kwargs=kwargs)
-        
-    def _init_shapes(self):
-        pass
 
     def __call__(self, x):
-        x = tf.constant(x, dtype=float)
-        # if len(x.shape) < 2 or x.shape[1:] != self.out_features:
-        #     out_shape_msg = ', '.join([str(d) for d in self.out_features])
-        #     raise ValueError(f'Expected input shape (batch_size, {out_shape_msg}), but got shape: {x.shape}')
+        x = np.array(x, dtype=float)
+        if len(x.shape) != 2 or x.shape[-1] != self.out_features:
+            raise ValueError(f'Expected input shape (batch_size, {self.out_features}), but got shape: {x.shape}')
         return x
 
     def iter(self):
@@ -135,87 +57,57 @@ class Input(AbstractLayer):
 class Dense(AbstractLayer):
     def __init__(self, prior:AbstractLayer, learning_rate:float, out_features:int, allowed_activations=None, **kwargs):
         super().__init__(prior, learning_rate, out_features, allowed_activations, kwargs=kwargs)
-        self.layer = tf.keras.layers.Dense(out_features, activation=self.activation)
-
-        self._init_shapes()
+        self.weights = np.random.normal(size=(prior.out_features,out_features))
 
     def update(self):
-        _update_tf_weights(self.layer, self.learning_rate)
+        _update_weights(self.weights, self.learning_rate)
 
     def __call__(self, x):
-        return self.layer(super().__call__(x))
-
-    def get_copy(self):
-        c = super().get_copy()
-        c.layer = _copy_keras_layer(c.layer)
-        return c
+        return self._activation()(super().__call__(x) @ self.weights)
 
 class Conv(AbstractLayer):
     def __init__(self, prior:AbstractLayer, learning_rate:float, out_features:int, allowed_activations=None, **kwargs):
-        kernel_size = int(prior.out_features - out_features + 1)
         super().__init__(prior, learning_rate, out_features, allowed_activations, kwargs=kwargs)
-        self.layer = tf.keras.layers.Conv1D(1, kernel_size, data_format='channels_last', activation=self.activation)
 
-        self._init_shapes()
+        assert out_features <= self.prior.out_features
+        kernel_size = self.prior.out_features - out_features + 1
+        self.weights = np.random.normal(size=kernel_size)
 
     def update(self):
-        _update_tf_weights(self.layer, self.learning_rate)
+        _update_weights(self.weights, self.learning_rate)
 
     def __call__(self, x):
-        x = super().__call__(x)
-        expand = len(x.shape) < 3
-        if expand:
-            x = tf.expand_dims(x, axis=-1)
-        y = self.layer(x)
-        if expand:
-            y = tf.squeeze(y, axis=-1)
-        return y
-
-    def get_copy(self):
-        c = super().get_copy()
-        c.layer = _copy_keras_layer(c.layer)
-        return c
+        return self._activation()(np.array([
+            np.convolve(x_i, self.weights, 'valid')
+            for x_i in super().__call__(x)
+        ]))
 
 class Attn(AbstractLayer):
     def __init__(self, prior:AbstractLayer, learning_rate:float, out_features:int, allowed_activations=None, **kwargs):
         super().__init__(prior, learning_rate, out_features, allowed_activations, kwargs=kwargs)
-        self.attn = tf.keras.layers.Attention()
-        self.W_q = tf.keras.layers.Dense(out_features, activation=self.activation)
-        self.W_k = tf.keras.layers.Dense(out_features, activation=self.activation)
-        self.W_v = tf.keras.layers.Dense(out_features, activation=self.activation)
-
-        self._init_shapes()
+        self.W_q = np.random.normal(size=(prior.out_features, out_features))
+        self.W_k = np.random.normal(size=(prior.out_features, out_features))
+        self.W_v = np.random.normal(size=(prior.out_features, out_features))
 
     def update(self):
-        _update_tf_weights(self.W_q, self.learning_rate)
-        _update_tf_weights(self.W_k, self.learning_rate)
-        _update_tf_weights(self.W_v, self.learning_rate)
+        _update_weights(self.W_q, self.learning_rate)
+        _update_weights(self.W_k, self.learning_rate)
+        _update_weights(self.W_v, self.learning_rate)
 
     def __call__(self, x):
         x = super().__call__(x)
-        if len(x.shape) != 3:
-            x = tf.expand_dims(x, axis=-1)
-        q = self.W_q(x)
-        k = self.W_k(x)
-        v = self.W_v(x)
-        y = self.attn([q, v, k])
-        return y
 
-    def get_copy(self):
-        c = super().get_copy()
-        c.attn = _copy_keras_layer(c.attn)
-        c.W_q = _copy_keras_layer(c.W_q)
-        c.W_k = _copy_keras_layer(c.W_k)
-        c.W_v = _copy_keras_layer(c.W_v)
-        return c
+        q = x @ self.W_q
+        k = x @ self.W_k
+        v = x @ self.W_v
+
+        return self._activation()(softmax(q*k)*v)
 
 class BatchNorm(AbstractLayer):
     def __init__(self, prior:AbstractLayer, learning_rate:float, **kwargs):
         super().__init__(prior, learning_rate, prior.out_features, kwargs=kwargs)
         self.gamma = np.log(np.e - 1)
         self.beta = 0
-
-        self._init_shapes()
 
     def update(self):
         self.beta += self.learning_rate*np.random.normal()
@@ -227,47 +119,31 @@ class BatchNorm(AbstractLayer):
         scale = np.log(np.exp(self.gamma)+1)
         offset = self.beta
 
-        return scale * (x - tf.reduce_mean(x)) / tf.math.reduce_std(x) + offset
-        x = x - tf.reduce_mean(x)
-        x /= tf.math.reduce_std(x)
-        return x
+        return scale * (x - np.mean(x)) / np.std(x) + offset
 
 class SkipConn(AbstractLayer):
     def __init__(self, prior:AbstractLayer, learning_rate:float, out_features:int, skip_from:AbstractLayer, allowed_activations=None, **kwargs):
         super().__init__(prior, learning_rate, out_features, allowed_activations)
-        self.prior_to_out = tf.keras.layers.Dense(out_features, activation=self.activation)
-        self.skip_to_out = tf.keras.layers.Dense(out_features, activation=self.activation)
-        self.flatten = tf.keras.layers.Flatten()
+        self.prior_to_out = np.random.normal(size=(prior.out_features, out_features))
+        self.skip_to_out = np.random.normal(size=(skip_from.out_features, out_features))
         self.skip_from = skip_from
 
-        self._init_shapes()
-
     def update(self):
-        _update_tf_weights(self.prior_to_out, self.learning_rate)
-        _update_tf_weights(self.skip_to_out, self.learning_rate)
+        _update_weights(self.prior_to_out, self.learning_rate)
+        _update_weights(self.skip_to_out, self.learning_rate)
 
     def __call__(self, x):
         x1 = super().__call__(x)
-        x1 = self.flatten(x1)
-        x1 = self.prior_to_out(x1)
+        x1 = x1 @ self.prior_to_out
 
         x2 = self.skip_from(x)
-        x2 = self.flatten(x2)
-        x2 = self.skip_to_out(x2)
+        x2 = x2 @ self.skip_to_out
 
-        return x1 + x2
-
-    def get_copy(self):
-        c = super().get_copy()
-        c.prior_to_out = _copy_keras_layer(c.prior_to_out)
-        c.skip_to_out = _copy_keras_layer(c.skip_to_out)
-        c.flatten = _copy_keras_layer(c.flatten)
-        c.skip_from = self.iter().index(self.skip_from)
-        return c
+        return self._activation()(x1 + x2)
 
 if __name__ == '__main__':
     # Example network
-    x = Input((3,)) # input could be a multidim vector (e.g., (5,3) you have have 5 embeddings with dims of 3)
+    x = Input(3) # input could be a multidim vector (e.g., (5,3) you have have 5 embeddings with dims of 3)
     y = BatchNorm(x, 0.1)
     y = SkipConn(y, 0.1, 5, x) # skip conn from input
     y = Attn(y, 0.1, 3)
@@ -302,7 +178,7 @@ if __name__ == '__main__':
 
     #copying network
     layers2 = copy_model(model)
-    model2 = layers2[-1]
+    model2 = layers2
     # prediction should be same
     print(
         'model_2: Should be same:',
