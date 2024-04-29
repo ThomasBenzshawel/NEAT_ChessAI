@@ -9,6 +9,7 @@ def _update_weights(w, r):
     w += r*np.random.normal(size=w.shape)
 
 def softmax(xs):
+    xs = np.clip(xs, -10, 10)
     xs = np.exp(xs)
     return xs / xs.sum(axis=-1, keepdims=True)
 
@@ -119,6 +120,9 @@ class BatchNorm(AbstractLayer):
         scale = np.log(np.exp(self.gamma)+1)
         offset = self.beta
 
+        if np.std(x) == 0:
+            return x
+
         return scale * (x - np.mean(x)) / np.std(x) + offset
 
 class SkipConn(AbstractLayer):
@@ -148,7 +152,9 @@ if __name__ == '__main__':
     y = SkipConn(y, 0.1, 5, x) # skip conn from input
     y = Attn(y, 0.1, 3)
     y = Dense(y, 0.1, 5)
+
     y = Conv(y, 0.1, 3)
+    y = type(y)(y, y.learning_rate, y.out_features)
     z = BatchNorm(y, 0.1)
     y = Dense(z, 0.1, 4)
     y = SkipConn(y, 0.1, 4, z)

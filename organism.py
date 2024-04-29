@@ -235,7 +235,14 @@ class NEATOrganism(Organism):
             constraints = self._layer_constraints[self._layer_str_map[layer]]
             n_node_min, n_node_max = constraints['n_nodes'] if 'n_nodes' in constraints.keys() else (self._layers[loc-1].out_features,self._layers[loc-1].out_features)
             # print(f"Min out_features: {n_node_min}\tMax out_features: {n_node_max}")
+            if(layer == Conv):
+                # HAS TO BE LESS THAN prior.out_features
+                # print(n_node_max)
+                n_node_max = min(n_node_max, self._layers[loc-1].out_features)
+                # print(n_node_max, self._layers[loc-1].out_features)
+                # DOES THIS WORK? TODO
             out_features = random.randint(n_node_min, n_node_max)
+            # print("Selected output features:", out_features)
             # print("Selected output features:", out_features)
             if not layer == SkipConn:
                 insert = layer(
@@ -257,7 +264,44 @@ class NEATOrganism(Organism):
                 )
             
             self._layers.insert(loc, insert)
-            self._layers[loc+1].prior = insert
+
+            # # remake all of the layers after the inserted layer
+            
+            for i in range(loc+1, len(self._layers)):
+                next_layer = self._layers[i]
+                if type(next_layer) == SkipConn:
+                    new_next = SkipConn(insert, next_layer.learning_rate, next_layer.out_features, skip_from=next_layer.skip_from)
+                elif type(next_layer) == Conv:
+                    new_next = Conv(insert, next_layer.learning_rate, min(next_layer.out_features, insert.out_features))
+                elif type(next_layer) == BatchNorm:
+                    new_next = BatchNorm(insert, next_layer.learning_rate)
+                else:
+                    new_next = type(next_layer)(insert, next_layer.learning_rate, next_layer.out_features)
+                self._layers[i] = new_next
+                self._layers[i].prior = insert
+
+            for i in range(1, len(self._layers)):
+                next_layer = self._layers[i]
+                if type(next_layer) == SkipConn:
+                    new_next = SkipConn(insert, next_layer.learning_rate, next_layer.out_features, skip_from=next_layer.skip_from)
+                elif type(next_layer) == Conv:
+                    new_next = Conv(insert, next_layer.learning_rate, min(next_layer.out_features, insert.out_features))
+                elif type(next_layer) == BatchNorm:
+                    new_next = BatchNorm(insert, next_layer.learning_rate)
+                else:
+                    new_next = type(next_layer)(insert, next_layer.learning_rate, next_layer.out_features)
+                self._layers[i] = new_next
+                self._layers[i].prior = insert
+                
+            # next_layer = self._layers[loc+1]
+            # if type(next_layer) == SkipConn:
+            #     new_next = SkipConn(insert, next_layer.learning_rate, next_layer.out_features, skip_from=next_layer.skip_from)
+            # elif type(next_layer) == Conv:
+            #     new_next = Conv(insert, next_layer.learning_rate, min(next_layer.out_features, insert.out_features))
+            # else:
+            #     new_next = type(next_layer)(insert, next_layer.learning_rate, next_layer.out_features)
+            # self._layers[loc+1] = new_next
+            # self._layers[loc+1].prior = insert
             
         return self
     
@@ -277,14 +321,14 @@ class NEATOrganism(Organism):
 
 # Testing pickling
 if __name__ == "__main__":
-    organism = NEATOrganism(10, 1, add_rate=1, activations=['sigmoid'], options=['dense', 'skipconn'])
+    organism = NEATOrganism(10, 1, add_rate=1, activations=['sigmoid', 'xelu'], options=['dense', 'skipconn', 'conv', 'attn', 'batchnorm'])
     test = np.zeros(10).reshape(1,-1)
     print(test.shape)
     print(organism.predict(test))
 
     organism.save('organism.pkl')
     organism = NEATOrganism.load('organism.pkl')
-    for i in range(1):
+    for i in range(50):
         organism.mutate()
     print("Layers after mutation:", [str(layer) for layer in organism._layers])
     print("HEYYYYYYYYYYYYYYYYYYYYYYOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO", str(organism._layers[-1].out_features))
