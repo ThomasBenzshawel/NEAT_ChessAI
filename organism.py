@@ -187,9 +187,9 @@ class NEATOrganism(Organism):
         self._layers.append(m_input)
         self._layers.append(Dense(m_input, learning_rate, n_outputs, allowed_activations=self._layer_constraints['activations']))
 
-        print("Organism initialized")
-        print(f"{self._layer_constraints=}")
-        print(f"{self._layer_options=}")
+        # print("Organism initialized")
+        # print(f"{self._layer_constraints=}")
+        # print(f"{self._layer_options=}")
     
     def predict(self, state):
         """
