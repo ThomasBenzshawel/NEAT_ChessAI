@@ -24,7 +24,7 @@ def data_generator(car_data_file, batch_size):
         yield X, y
 
 def simulate_and_evaluate(organism_1, organism_2=None, print_game=False, trials=1, test=False, batch_size=1000):
-    print("Starting car price simulation")
+    # print("Starting car price simulation")
 
     organism_1.score = 0
     if organism_2 is not None:
@@ -46,7 +46,7 @@ def simulate_and_evaluate(organism_1, organism_2=None, print_game=False, trials=
     if not test:
         organism_1.score = organism_1.score / trials
         organism_2.score = organism_2.score / trials
-        print("Organisms evaluated")
+        # print("Organisms evaluated")
     else:
         print("Organism tested")
         return organism_1.score
