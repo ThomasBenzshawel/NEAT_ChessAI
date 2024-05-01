@@ -3,3 +3,5 @@ __pycache__/
 data/car_prices_processed.csv
 data/car_test_data.csv
 data/car_train_data.csv
+data/car_data_train.csv
+data/car_data_test.csv
