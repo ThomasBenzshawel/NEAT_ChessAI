@@ -5,6 +5,7 @@ import pandas as pd
 
 def data_generator(car_data_file, batch_size):
     car_data = pd.read_csv(car_data_file, chunksize=batch_size)
+    car_data = car_data.sample(frac=1).reset_index(drop=True)
     for chunk in car_data:
         goal = chunk["sellingprice"].astype(float)
         chunk = chunk.drop(columns=["sellingprice"])
