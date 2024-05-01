@@ -38,8 +38,8 @@ class AbstractLayer:
     
     def _activation(self):
         return {
-            'xelu': lambda x: x/(1+np.exp(-x)),
-            'sigmoid': lambda x: 1/(1+np.exp(-x))
+            'xelu': lambda x: np.clip(x, -10, 10)/(1+np.exp(-np.clip(x, -10, 10))),
+            'sigmoid': lambda x: 1/(1+np.exp(-np.clip(x, -10, 10)))
         }[self.activation]
 
 class Input(AbstractLayer):
