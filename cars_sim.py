@@ -1,15 +1,25 @@
 import numpy as np
 from organism import NEATOrganism
 import pandas as pd
+from sklearn.preprocessing import StandardScaler
 
 
 def data_generator(car_data_file, batch_size):
     car_data = pd.read_csv(car_data_file, chunksize=batch_size)
-    car_data = car_data.sample(frac=1).reset_index(drop=True)
+    scaler = StandardScaler()
+    
     for chunk in car_data:
+        chunk = chunk.sample(frac=1).reset_index(drop=True)
         goal = chunk["sellingprice"].astype(float)
         chunk = chunk.drop(columns=["sellingprice"])
-        X = np.array(chunk)
+        
+        
+        numerical_cols = chunk.select_dtypes(include=[np.number]).columns
+        onehot_cols = chunk.select_dtypes(exclude=[np.number]).columns
+        
+        chunk[numerical_cols] = scaler.fit_transform(chunk[numerical_cols])
+        
+        X = np.array(pd.concat([chunk[numerical_cols], chunk[onehot_cols]], axis=1))
         y = goal.values
         yield X, y
 
