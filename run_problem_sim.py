@@ -129,7 +129,7 @@ def run_generations(ecosystem, generations, parallel=False):
         best_ai_list.append(best_ai[1])
         print("Best AI = ", best_ai[1])
         
-        ecosystem.get_best_organism().save("model_new.pkl")
+        ecosystem.get_best_organism().save(f"model_best_gen_{i}.pkl.pkl")
         
         fig, ax = plt.subplots()
         
