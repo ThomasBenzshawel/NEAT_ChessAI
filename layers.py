@@ -210,17 +210,17 @@ if __name__ == '__main__':
         ])
     )
 
-    #testing pickling
-    import pickle
-    with open('model.pkl', 'wb') as f:
-        pickle.dump(model, f)
+    # #testing pickling
+    # import pickle
+    # with open('model.pkl', 'wb') as f:
+    #     pickle.dump(model, f)
 
-    with open('model.pkl', 'rb') as f:
-        model = pickle.load(f)
-    print( # should be same as last model_1 call
-        'model_1: Should be same as last model_1 call:',
-        model([
-            [1,-5,3],
-            [-1,10,1]
-        ])
-    )
+    # with open('model.pkl', 'rb') as f:
+    #     model = pickle.load(f)
+    # print( # should be same as last model_1 call
+    #     'model_1: Should be same as last model_1 call:',
+    #     model([
+    #         [1,-5,3],
+    #         [-1,10,1]
+    #     ])
+    # )
