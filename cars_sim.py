@@ -13,9 +13,18 @@ def data_generator(car_data_file, batch_size):
         goal = chunk["sellingprice"].astype(float)
         chunk = chunk.drop(columns=["sellingprice"])
         
+        #one hot columns are 1's and 0's, numerical columns are ints or floats
+        #we do not have access to the column names, so we need to infer them
+        # if the column has more than 10 unique values, we assume it is numerical
+        onehot_cols = []
+        numerical_cols = []
+        for col in chunk.columns:
+            if chunk[col].nunique() > 10:
+                numerical_cols.append(col)
+            else:
+                onehot_cols.append(col)
         
-        numerical_cols = chunk.select_dtypes(include=[np.number]).columns
-        onehot_cols = chunk.select_dtypes(exclude=[np.number]).columns
+        
         
         chunk[numerical_cols] = scaler.fit_transform(chunk[numerical_cols])
         

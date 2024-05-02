@@ -33,31 +33,31 @@ class Organism:
         pass
 
     def save(self, filepath):
-        state = {
-            '_learning_rate': self._learning_rate,
-            '_layers': self._layers,
-            '_layer_constraints': self._layer_constraints,
-            '_layer_options': self._layer_options,
-            '_n_inputs': self._n_inputs,
-            '_n_outputs': self._n_outputs,
-            '_add_rate': self._add_rate,
-            '_del_rate': self._del_rate
-        }
+        # state = {
+        #     '_learning_rate': self._learning_rate,
+        #     '_layers': self._layers,
+        #     '_layer_constraints': self._layer_constraints,
+        #     '_layer_options': self._layer_options,
+        #     '_n_inputs': self._n_inputs,
+        #     '_n_outputs': self._n_outputs,
+        #     '_add_rate': self._add_rate,
+        #     '_del_rate': self._del_rate
+        # }
         with open(filepath, 'wb') as file:
-            pickle.dump(state, file)
+            pickle.dump(self, file)
 
     @staticmethod
     def load(filepath):
         with open(filepath, 'rb') as file:
             state = pickle.load(file)
-        organism = NEATOrganism(state['_n_inputs'], state['_n_outputs'])
-        organism._learning_rate = state['_learning_rate']
-        organism._layers = state['_layers']
-        organism._layer_constraints = state['_layer_constraints']
-        organism._layer_options = state['_layer_options']
-        organism._add_rate = state['_add_rate']
-        organism._del_rate = state['_del_rate']
-        return organism
+        # organism = NEATOrganism(state['_n_inputs'], state['_n_outputs'])
+        # organism._learning_rate = state['_learning_rate']
+        # organism._layers = state['_layers']
+        # organism._layer_constraints = state['_layer_constraints']
+        # organism._layer_options = state['_layer_options']
+        # organism._add_rate = state['_add_rate']
+        # organism._del_rate = state['_del_rate']
+        return state
 
 
 class NEATOrganism(Organism):
