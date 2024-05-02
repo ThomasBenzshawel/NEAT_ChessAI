@@ -20,6 +20,6 @@ def parallel_simulate_and_evaluate_organism(organism_1, organism_2=None, num_sim
         eval =  chess_sim.parallel_simulate_and_evaluate(organism_1, organism_2, num_sims=num_sims, print_game=True)
         return eval
     elif simulation_type == 'cars':
-        eval = cars_sim.parallel_simulate_and_evaluate(organism_1, organism_2, test=False, num_sims=num_sims)
+        eval = cars_sim.parallel_simulate_and_evaluate(organism_1, organism_2, num_sims=num_sims)
         return eval
     
