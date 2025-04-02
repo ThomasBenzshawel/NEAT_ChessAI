@@ -1,6 +1,6 @@
 import chess
 import numpy as np
-from organism import NEATOrganism
+from organisms import NEATOrganism
 
 #Main file that does the sim and organism work
 

@@ -1,17 +1,167 @@
 import numpy as np
 import random
+import torch
+from torch import nn
 import pickle
+
+from abc import abstractmethod
+from collections.abc import Iterable
+from math import prod
 
 def copy_model(last_layer):
     return pickle.loads(pickle.dumps(last_layer))
 
-def _update_weights(w, r):
-    w += r*np.random.normal(size=w.shape)
+def _update_weights(w, r, sig=1):
+    w += r*np.random.normal(scale=sig, size=w.shape)
 
 def softmax(xs):
     xs = np.clip(xs, -10, 10)
     xs = np.exp(xs)
     return xs / xs.sum(axis=-1, keepdims=True)
+
+class SupervisedLayer(nn.Module):
+    def __init__(self, input_shape: tuple | int, output_shape: tuple | int):
+        super().__init__()
+        self._input_shape = input_shape
+        self.output_shape = output_shape
+    
+    @property
+    def is_output_flat(self):
+        return not (isinstance(self.output_shape, Iterable) and len(self.output_shape) > 1)
+    
+    @property
+    def input_shape(self):
+        return self._input_shape
+    
+    
+    @input_shape.setter
+    @abstractmethod
+    def input_shape(self, val):
+        pass
+    
+    @abstractmethod
+    def forward(self, X):
+        pass
+
+class SupervisedConvLayer(SupervisedLayer):
+    def __init__(
+            self,
+            input_shape,
+            kernel_size,
+            n_kernels,
+            padding=0,
+            stride=1,
+            activation="relu",
+        ):
+        self.kernel_size = kernel_size
+        self.n_kernels = n_kernels
+        self.padding = padding
+        self.stride = stride
+        # assumed that the input shape is either square or cube
+        # and that last value in input_shape corresponds to n_kernels in previous conv layer
+        # (or 1 if first conv layer)
+        multi_dim_input = isinstance(input_shape, Iterable)
+        W = input_shape[0] if multi_dim_input else input_shape
+        # based on stackoverflow answer: https://stackoverflow.com/questions/53580088/calculate-the-output-size-in-convolution-layer
+        out_size = ((W-kernel_size-(2*padding))/stride) + 1
+        n_dims = len(input_shape) - 1 if multi_dim_input else 1
+        output_shape = (*[out_size for _ in range(n_dims)], n_kernels)
+        super().__init__(input_shape, output_shape)
+        match n_dims:
+            case 1:
+                l = nn.Conv1d(
+                    input_shape[0] if multi_dim_input else input_shape,
+                    n_kernels,
+                    kernel_size,
+                    stride=stride,
+                    padding=padding
+                )
+            case 2:
+                l = nn.Conv2d(
+                    input_shape[-1],
+                    n_kernels,
+                    kernel_size,
+                    stride=stride,
+                    padding=padding
+                )
+            case 3:
+                l = nn.Conv3d(
+                    input_shape[-1],
+                    n_kernels,
+                    kernel_size,
+                    stride=stride,
+                    padding=padding
+                )
+            case _:
+                raise ValueError(f"{n_dims}-dimensional convolutional layer not supported.")
+        layers = [l]
+        match activation:
+            case "relu":
+                layers.append(nn.ReLU())
+            case "sigmoid":
+                layers.append(nn.Sigmoid())
+            case "linear":
+                pass
+            case _:
+                raise ValueError(f"Did not recognize {activation} as a supported activation function.")
+        self._layers = layers
+        self._layer_sequence = nn.Sequential(*layers)
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+
+    @SupervisedLayer.input_shape.setter
+    def input_shape(self, val):
+        super()._input_shape = val
+        self._layers[0] = type(self._layers[0])(
+            self.input_shape[-1],
+            self.output_shape[-1],
+            self.kernel_size,
+            stride=self.stride,
+            padding=self.padding
+        )
+        self._layer_sequence = nn.Sequential(*self._layers)
+    
+    def forward(self, X):
+        return self._layer_sequence(X)
+
+class SupervisedDenseLayer(SupervisedLayer):
+    def __init__(self, input_shape, nodes_out, activation='relu'):
+        super().__init__(input_shape, nodes_out)
+        self.flatten = isinstance(input_shape, Iterable) and len(input_shape) > 1
+        match activation:
+            case 'relu':
+                activation_layer = nn.ReLU()
+            case 'sigmoid':
+                activation_layer = nn.Sigmoid()
+            case 'softmax':
+                activation_layer = nn.Softmax(dim=1)
+            case _:
+                raise ValueError(f"{activation} not recognized as supported activation type")
+        self._layers = [
+            nn.Linear(
+                prod(input_shape) if isinstance(input_shape, Iterable) else input_shape,
+                nodes_out
+            ),
+            activation_layer
+        ]
+        self._sequential = nn.Sequential(*self._layers)
+        self.flatten_layer = nn.Flatten()
+    
+    @SupervisedLayer.input_shape.setter
+    def input_shape(self, val):
+        self._input_shape = val
+        self._layers[0] = nn.Linear(
+            prod(self.input_shape) if isinstance(self.input_shape, Iterable) else self.input_shape,
+            self.output_shape
+        )
+        self._sequential = nn.Sequential(*self._layers)
+    
+    def forward(self, X):
+        if self.flatten:
+            X = self.flatten_layer(X)
+        y = self._sequential(X)
+        return y
 
 class AbstractLayer:
     def __init__(self, prior:"AbstractLayer", learning_rate:float, out_features:int, allowed_activations:list[str]=None, **kwargs):
@@ -41,6 +191,9 @@ class AbstractLayer:
             'xelu': lambda x: np.clip(x, -10, 10)/(1+np.exp(-np.clip(x, -10, 10))),
             'sigmoid': lambda x: 1/(1+np.exp(-np.clip(x, -10, 10)))
         }[self.activation]
+    
+    def __str__(self):
+        return f"{self.__class__.__name__}[{self.out_features}]"
 
 class Input(AbstractLayer):
     def __init__(self, out_features:int, **kwargs):
@@ -58,10 +211,11 @@ class Input(AbstractLayer):
 class Dense(AbstractLayer):
     def __init__(self, prior:AbstractLayer, learning_rate:float, out_features:int, allowed_activations=None, **kwargs):
         super().__init__(prior, learning_rate, out_features, allowed_activations, kwargs=kwargs)
-        self.weights = np.random.normal(size=(prior.out_features,out_features))
+        self.weights = np.random.uniform(-10, 10, size=(prior.out_features,out_features))
+        self.noise = kwargs['noise'] if 'noise' in kwargs.keys() else 1
 
     def update(self):
-        _update_weights(self.weights, self.learning_rate)
+        _update_weights(self.weights, self.learning_rate, sig=self.noise)
 
     def __call__(self, x):
         return self._activation()(super().__call__(x) @ self.weights)
@@ -127,7 +281,7 @@ class BatchNorm(AbstractLayer):
 
 class SkipConn(AbstractLayer):
     def __init__(self, prior:AbstractLayer, learning_rate:float, out_features:int, skip_from:AbstractLayer, allowed_activations=None, **kwargs):
-        super().__init__(prior, learning_rate, out_features, allowed_activations)
+        super().__init__(prior, learning_rate, out_features, allowed_activations, **kwargs)
         self.prior_to_out = np.random.normal(size=(prior.out_features, out_features))
         self.skip_to_out = np.random.normal(size=(skip_from.out_features, out_features))
         self.skip_from = skip_from

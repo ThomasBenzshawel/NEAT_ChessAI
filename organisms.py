@@ -2,7 +2,8 @@ import numpy as np
 import layers
 import random
 import pickle
-
+import torch
+from torch import nn
 
 from layers import (
     AbstractLayer,
@@ -13,12 +14,18 @@ from layers import (
     SkipConn,
     BatchNorm,
 )
+from models import SupervisedModel
+
 from abc import abstractmethod
 import random
 
 class Organism:
-    def __init__(self):
-        pass
+    _input_shape: tuple
+    _n_outputs: int
+
+    def __init__(self, in_shape, n_outputs):
+        self._input_shape = in_shape
+        self._n_outputs = n_outputs
 
     @abstractmethod
     def predict(self, state):
@@ -31,6 +38,12 @@ class Organism:
     @abstractmethod
     def mate(self, other):
         pass
+    
+    def predict_batch(self, batch):
+        y = np.zeros((self._n_outputs))
+        for i, x in enumerate(batch):
+            y[i] = self.predict(x)
+        return y
 
     def save(self, filepath):
         # state = {
@@ -65,7 +78,6 @@ class NEATOrganism(Organism):
     _layers: list[AbstractLayer]
     _layer_constraints: dict[str:dict]
     _layer_options: list
-    _n_inputs: int
     _n_outputs: int
     _add_rate: float
     _del_rate: float
@@ -78,12 +90,19 @@ class NEATOrganism(Organism):
     }
 
     def __init__(self,
-                 n_inputs,
+                 input_shape,
                  n_outputs,
+                 fine_change_prob=1,
                  learning_rate=.1,
                  add_rate=.1,
                  del_rate=.1,
                  model_file=None,
+                 output_activation='xelu',
+                 supervised=False,
+                 burn_in=5,
+                 loss='mse',
+                 X=None,
+                 y=None,
                  **constraints):
         """
         Initialize an organism for a Neuro-evolution by Augmented Topologies (NEAT) genetic algorithm.
@@ -116,6 +135,8 @@ class NEATOrganism(Organism):
                 'n_nodes': tuple
                     the minimum and maximum number, respectively, of nodes
                     permitted in the dense layer
+                'noise': float
+                    the standard deviation of the updates to weights
             conv: dict[str:any]
                 'n_nodes': tuple
                     the minimum and maximum number, respectively, of nodes
@@ -134,15 +155,15 @@ class NEATOrganism(Organism):
         if model_file is not None:
             self.load(model_file)
             return
-
+        super().__init__(input_shape, n_outputs)
         self._layers = []
         self._layer_options = []
         self._learning_rate = learning_rate
-        self._n_inputs = n_inputs
-        self._n_outputs = n_outputs
         self._layer_constraints = constraints
         self._add_rate = add_rate
         self._del_rate = del_rate
+        self._fine_change_prob = fine_change_prob
+        self._burn_in = burn_in
 
         if "options" in constraints.keys():
             options = constraints['options']
@@ -169,8 +190,10 @@ class NEATOrganism(Organism):
         
         default_n_node_range = (2,32)
         
+        self._batch_size = constraints['batch_size'] if "batch_size" in constraints.keys() else 64
+        
         if not self._layer_str_map[Dense] in constraints.keys():
-            self._layer_constraints[self._layer_str_map[Dense]] = {'n_nodes': default_n_node_range}
+            self._layer_constraints[self._layer_str_map[Dense]] = {'n_nodes': default_n_node_range, 'noise': 1}
         if not self._layer_str_map[Conv] in constraints.keys():
             self._layer_constraints[self._layer_str_map[Conv]] = {'n_nodes': default_n_node_range}
         if not self._layer_str_map[Attn] in constraints.keys():
@@ -183,9 +206,35 @@ class NEATOrganism(Organism):
         if not "activations" in constraints.keys():
             self._layer_constraints['activations'] = ['xelu', 'sigmoid']
 
-        m_input = Input(n_inputs)
-        self._layers.append(m_input)
-        self._layers.append(Dense(m_input, learning_rate, n_outputs, allowed_activations=self._layer_constraints['activations']))
+        self.supervised = supervised
+        self._train_features = X
+        self._train_labels = y
+
+        if not supervised:
+            m_input = Input(input_shape)
+            self._layers.append(m_input)
+            self._layers.append(Dense(
+                m_input,
+                learning_rate,
+                n_outputs,
+                allowed_activations=[output_activation],
+                **self._layer_constraints[self._layer_str_map[Dense]]
+            ))
+        else:
+            self._model: nn.Module = SupervisedModel(input_shape, n_outputs, output_activation=output_activation)
+            match loss:
+                case 'mse':
+                    self._loss = nn.MSELoss()
+                case 'cross-entropy':
+                    self._loss = nn.CrossEntropyLoss()
+                case 'binary-cross-entropy':
+                    self._loss = nn.BCELoss()
+            self._optimizer = torch.optim.Adam(self._model.parameters(), lr=learning_rate)
+            self._dataloader = torch.utils.data.DataLoader(
+                torch.utils.data.TensorDataset(torch.from_numpy(X).float(), torch.from_numpy(y).float()),
+                batch_size=self._batch_size
+            )
+
 
         # print("Organism initialized")
         # print(f"{self._layer_constraints=}")
@@ -202,9 +251,74 @@ class NEATOrganism(Organism):
         Returns:
             The prediction of shape n_outputs of the model based on the given state.
         """
-        return self._layers[-1](state)
+        if not self.supervised:
+            return self._layers[-1](state)
+        else:
+            self._model.eval()
+            return self._model(torch.from_numpy(state).float())
     
     def mutate(self):
+        """Make modifications to this organism in-place. It is the responsibility of the caller to call 
+        copy on the organism before calling if an unchanged version is required.
+        """
+        if self.supervised:
+            self._mutate_supervised()
+        else:
+            self._mutate_unsupervised()
+    
+    def _mutate_supervised(self):
+        train_epoch_prob = self._fine_change_prob
+        epochs = 1
+        # deletion step
+        roll = random.random()
+        if roll < self._del_rate and self._model.depth() >= 1:
+            to_remove = random.randrange(0,self._model.depth(), 1)
+            self._model.remove_layer(to_remove)
+            self._optimizer = torch.optim.Adam(self._model.parameters(), lr=self._learning_rate)
+            train_epoch_prob = 1 # always train an epoch
+            epochs = self._burn_in
+        
+        # addition step
+        roll = random.random()
+        if roll < self._add_rate:
+            loc = random.randrange(0,self._model.depth()+1, 1)
+            layer = random.choice(self._layer_options)
+            # print("Layer type selected:", layer)
+            # print("Previous layer output:", self._layers[loc-1].out_features)
+            # print("Next layer:", self._layers[loc])
+            constraints = self._layer_constraints[self._layer_str_map[layer]]
+            n_node_min, n_node_max = constraints['n_nodes'] if 'n_nodes' in constraints.keys() else (2,32)
+            # print(f"Min out_features: {n_node_min}\tMax out_features: {n_node_max}")
+                # print(n_node_max, self._layers[loc-1].out_features)
+                # DOES THIS WORK? TODO
+            out_features = random.randint(n_node_min, n_node_max)
+            self._model.add_layer(
+                layer,
+                loc,
+                out_features,
+                activation=random.choice(self._layer_constraints['activations']).replace('x', 'r'),
+                kernel_size=3
+            )
+            self._optimizer = torch.optim.Adam(self._model.parameters(), lr=self._learning_rate)
+            # always retrain after adding layer
+            train_epoch_prob = 1
+            epochs = self._burn_in
+        
+        # supervised training step
+        roll = random.random()
+        if roll < train_epoch_prob:
+            self._model.train(True)
+            for e in range(epochs):
+                for X, y in self._dataloader:
+                    pred = self._model(X)
+                    loss = self._loss(pred, y.resize_((len(y), 1)))
+
+                    loss.backward()
+                    self._optimizer.step()
+                    self._optimizer.zero_grad()
+            self._model.train(False)
+    
+    def _mutate_unsupervised(self):
         """
         Generate and return a child of this organism with some modifications.
         """
@@ -318,6 +432,26 @@ class NEATOrganism(Organism):
 
     def mate(self, other):
         raise NotImplementedError
+    
+    def __str__(self):
+        return "NEATOrganism::" + " -> ".join([str(l) for l in self._layers])
+
+class RandomOrganism(Organism):
+    def __init__(self, in_shape, n_outputs, output_range=(0,1)):
+        super().__init__(in_shape, n_outputs)
+        self.out_range = output_range
+    
+    def predict(self, state):
+        return (np.random.random((state.shape[0], self._n_outputs))*(self.out_range[1]-self.out_range[0])) + self.out_range[0]
+
+    def mutate(self):
+        pass
+
+    def mate(self, other):
+        pass
+
+    def __str__(self):
+        return f"RadomOrganism(n_outs={self._n_outputs})"
 
 # Testing pickling
 if __name__ == "__main__":

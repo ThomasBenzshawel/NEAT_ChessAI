@@ -1,5 +1,5 @@
 import numpy as np
-from organism import NEATOrganism
+from organisms import NEATOrganism
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
 

@@ -1,10 +1,10 @@
 import numpy as np
 import problem_sim_general as sim
 import matplotlib.pyplot as plt
-from organism import NEATOrganism
+from organisms import NEATOrganism
 import numpy as np
 from multiprocessing import Pool
-from organism import NEATOrganism
+from organisms import NEATOrganism
 
 # Ecosystem and GA work
 
@@ -14,7 +14,15 @@ def pairwise(iterable):
     return zip(a, a)
 
 class Ecosystem():
-    def __init__(self, orginism_creator, scoring_function, population_size=100, holdout='sqrt', mating=True, test_eval=False):
+    def __init__(
+            self,
+            orginism_creator,
+            scoring_function,
+            population_size=100,
+            holdout='sqrt',
+            mating=True,
+            test_eval=False,
+        ):
         """
         origanism_creator must be a function to produce Organisms, used for the original population
         scoring_function must be a function which accepts an Organism as input and returns a float
@@ -53,6 +61,8 @@ class Ecosystem():
                 offspring = self.population[parent_1_idx].mate(self.population[parent_2_idx])
             else:
                 offspring = self.population[parent_1_idx]._copy()
+            
+            offspring.mutate()
             
             new_population.append(offspring)
 
