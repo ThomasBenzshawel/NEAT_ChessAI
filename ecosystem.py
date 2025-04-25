@@ -1,3 +1,5 @@
+from concurrent.futures import ThreadPoolExecutor
+import threading
 from organisms import NEATOrganism, RandomOrganism, Organism
 
 from copy import copy, deepcopy
@@ -43,27 +45,9 @@ class Ecosystem():
             o_type: Organism.__class__ = self.org_types[randint(0, n_allowed_orgs-1)]
             if o_type == NEATOrganism and "NEAT" in organism_constraints.keys():
                 constraints = organism_constraints["NEAT"]
-                # NEAT default metalearning hyperparameters
-                learning_rate=.1
-                add_rate=.1
-                del_rate=.1
-                neat_constraints = {}
-                if 'learning_rate' in constraints.keys():
-                    learning_rate = constraints['learning_rate']
-                if 'add_rate' in constraints.keys():
-                    add_rate = constraints['add_rate']
-                if 'del_rate' in constraints.keys():
-                    del_rate = constraints['del_rate']
-                if 'constraints' in constraints.keys():
-                    neat_constraints = constraints['constraints']
-                if 'supervised' in constraints.keys():
-                    pass
                 new_org = NEATOrganism(
                     input_shape,
                     out_size,
-                    # learning_rate=learning_rate,
-                    # add_rate=add_rate,
-                    # del_rate=del_rate,
                     **constraints
                 )
             else: # default parameters are used
@@ -89,6 +73,15 @@ class Ecosystem():
         self.elite = use_elitism
         self.test_eval = test_eval
         self._poll_idx = 0
+
+        def mutate_agent(i, agent):
+            agent.mutate()
+            print(f"Completed mutation of agent {i}.")
+
+        # begin with a diverse population
+        with ThreadPoolExecutor(max_workers=5) as exec:
+            for i, agent in enumerate(self.population):
+                exec.submit(mutate_agent, i, agent)
 
     
     def poll_agent(self):
@@ -135,17 +128,26 @@ class Ecosystem():
         breeding_pool = sorted_pop[:self._breed_thresh].tolist()
         if self.elite:
             new_pop = [a for a in breeding_pool]
+            to_delete = self.population[self._breed_thresh:]
         else:
             new_pop = []
+            to_delete = self.population
         
         # until size condition of new population is met, add children to new population
         # NOTE: mating is not currently supported
-        parent_idx = 0
-        while len(new_pop) < self.pop_size:
-            child: Organism = deepcopy(breeding_pool[parent_idx])
-            child.mutate()
-            new_pop.append(child)
-            parent_idx = (parent_idx + 1) % len(breeding_pool)
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            parent_idx = 0
+            while len(new_pop) < self.pop_size:
+                child: Organism = copy(breeding_pool[parent_idx])
+                executor.submit(child.mutate)
+                new_pop.append(child)
+                parent_idx = (parent_idx + 1) % len(breeding_pool)
+            executor.shutdown(wait=True)
+        
+        # To fully kill off unused agents and to make sure it is garbage-collected,
+        # explicitly delete them
+        for killed in to_delete:
+            del killed
         
         self.population = new_pop
 

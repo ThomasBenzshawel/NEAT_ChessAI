@@ -1,3 +1,5 @@
+from concurrent.futures import ThreadPoolExecutor
+import threading
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -10,6 +12,11 @@ from sklearn.metrics import accuracy_score, precision_score, f1_score
 from organisms import Organism
 from ecosystem import Ecosystem
 
+def torch_accuracy(real: torch.Tensor, predicted: torch.Tensor):
+    assert real.flatten().shape == predicted.flatten().shape
+    n_correct = (real.flatten() == predicted.flatten()).int().sum().item()
+    return n_correct / real.shape[0]
+
 class TabularEnvironment:
     def __init__(
             self,
@@ -20,11 +27,12 @@ class TabularEnvironment:
             score='accuracy',
             is_classification=False,
             positive_thresh=.5,
-            ecosystem_config={}
-        ):
+            ecosystem_config: dict={}
+    ):
         self.is_classification = is_classification
         self.positive_thresh = positive_thresh
         data = pd.read_csv(dataset_path)
+        self.bootstrap = 'NEAT' in ecosystem_config.keys() and 'supervised' in ecosystem_config['NEAT'].keys() and ecosystem_config['NEAT']['supervised']
         X = data.filter(items=x_cols)
         y = data[y_col]
         if val != None and val > 0:
@@ -33,15 +41,27 @@ class TabularEnvironment:
             # if val is None or 0, then use full train set for validation
             X_train, X_val = X, X
             y_train, y_val = y, y
-        self.X_train = X_train.to_numpy()
-        self.y_train = y_train.to_numpy()
-        self.X_val = X_val.to_numpy()
-        self.y_val = y_val.to_numpy()
+        
+        if self.bootstrap:
+            self.X_train = torch.from_numpy(X_train.to_numpy()).float()
+            self.y_train = torch.from_numpy(y_train.to_numpy()).float()
+            self.X_val = torch.from_numpy(X_val.to_numpy()).float()
+            self.y_val = torch.from_numpy(y_val.to_numpy()).float()
+            if torch.cuda.is_available():
+                self.X_train = self.X_train.cuda()
+                self.y_train = self.y_train.cuda()
+                self.X_val = self.X_val.cuda()
+                self.y_val = self.y_val.cuda()
+        else:
+            self.X_train = X_train.to_numpy()
+            self.y_train = y_train.to_numpy()
+            self.X_val = X_val.to_numpy()
+            self.y_val = y_val.to_numpy()
         self.ecosystem = Ecosystem(X.shape[1], 1, **ecosystem_config)
         self.n_agents = self.ecosystem.pop_size
         match(score):
             case 'accuracy':
-                self.score_func = accuracy_score
+                self.score_func = accuracy_score if not self.bootstrap else torch_accuracy
             case 'f1':
                 self.score_func = f1_score
             case 'precision':
@@ -55,29 +75,40 @@ class TabularEnvironment:
     def run(self, iterations=1, batch_size=10):
         def run_iteration():
             scores = np.zeros(self.n_agents)
+            scores_lock = threading.Lock()
+            def run_agent(agent, i):
+                y_pred = agent.predict(self.X_val)
+                # if type(y_pred) == torch.Tensor:
+                #     y_pred = y_pred.detach().cpu().numpy()
+                if self.is_classification:
+                    if self.bootstrap:
+                        y_pred = (y_pred >= self.positive_thresh).int()
+                    else:
+                        y_pred = (y_pred >= self.positive_thresh).astype(int)
+                agent_score = self.score_func(self.y_val, y_pred)
+                with scores_lock:
+                    scores[i] = agent_score
+
             batch_idx, batch = self.ecosystem.poll_agents(batch_size)
             while batch.size != 0:
-                batch_scores = np.zeros(batch_size)
-                for i, agent in enumerate(batch):
-                    y_pred = agent.predict(self.X_val)
-                    if type(y_pred) == torch.Tensor:
-                        y_pred = y_pred.detach().numpy()
-                    if self.is_classification:
-                        y_pred = (y_pred >= self.positive_thresh).astype(int)
-                    agent_score = self.score_func(self.y_val, y_pred)
-                    batch_scores[i] = agent_score
-                scores[batch_idx] = batch_scores
+                with ThreadPoolExecutor(max_workers=5) as executor:
+                    for i, agent in zip(batch_idx, batch):
+                        executor.submit(run_agent, agent, i)
                 batch_idx, batch = self.ecosystem.poll_agents(batch_size)
-                return scores
-        max_scores = np.zeros(iterations)
-        avg_scores = np.zeros(iterations)
+            return scores
+        
+        max_scores = np.zeros(iterations+1)
+        avg_scores = np.zeros(iterations+1)
         for gen in range(iterations-1):
+            print(f"Starting Generation {gen}...")
+            print("\tEvaluating Agents...")
             scores = run_iteration()
+            print("\tRepopulating Ecosystem...")
             self.ecosystem.repopulate(scores)
             max_scores[gen] = scores.max()
             avg_scores[gen] = scores.mean()
-            print(f"Max score for generation {gen}:", scores.max())
-            # print(f"Average score for generation {gen}:", scores.mean())
+            print(f"\tMax score for generation {gen}:", max_scores[gen])
+            print(f"\tAverage score for generation {gen}:", avg_scores[gen])
         final_scores = run_iteration()
         max_scores[-1] = final_scores.max()
         avg_scores[-1] = final_scores.mean()
@@ -85,6 +116,8 @@ class TabularEnvironment:
         return max_scores, avg_scores, self.ecosystem.order_population(final_scores)
 
 if __name__ == "__main__":
+    import time
+
     TRAIN_SIZE = 100_000
     def non_linear_data_maker(n_features=10, n_samples=10000, noise=0.1, random_seed=None):
         """
@@ -145,36 +178,74 @@ if __name__ == "__main__":
         'y': df['y'].to_numpy(),
         'loss': 'binary-cross-entropy',
         'dense': dense_layer_config,
-        'options': ['dense',],
+        'options': ['dense', 'conv'],
         'output_activation': 'sigmoid',
     }
-    eco_config = {
-        'population_size': 500,
-        'NEAT': neat_config,
-        'breeding_threshold': .05,
-        'org_types': ['NEAT']
-    }
-    POP_SIZE = 50_000
-    env = TabularEnvironment(
-        "./test_montecarlo_set.csv",
-        feature_cols,
-        'y',
-        val=.2,
-        is_classification=True,
-        positive_thresh=.5,
-        ecosystem_config=eco_config
-    )
-    ITERATIONS= 75
-    try:
+    POP_SIZE = 500
+    # Inter-Generational Surviving Population
+    igsp_sizes = [.05, *[i / 10 for i in range(1,6)]]
+
+    elapsed_times = []
+    pop_max_scores = []
+    for igsp in igsp_sizes:
+        eco_config = {
+            'population_size': POP_SIZE,
+            'NEAT': neat_config,
+            'breeding_threshold': igsp,
+            'org_types': ['NEAT']
+        }
+        env = TabularEnvironment(
+            "./test_montecarlo_set.csv",
+            feature_cols,
+            'y',
+            val=.2,
+            is_classification=True,
+            positive_thresh=.5,
+            ecosystem_config=eco_config
+        )
+        ITERATIONS= 10
+        start = time.process_time()
         max_scores, avg_scores, final_pop = env.run(iterations=ITERATIONS, batch_size=100)
-    finally:
-        print("Breeding pool of final population:")
-        print("\n".join([str(a) for a in final_pop[:env.ecosystem._breed_thresh]]))
-        plt.plot(np.arange(ITERATIONS), max_scores, label="Max Score")
-        plt.plot(np.arange(ITERATIONS), avg_scores, label="Avg Score")
+        end = time.process_time()
+
+        elapsed = end - start
+        elapsed_times.append(elapsed)
+        hours = elapsed // 3600
+        minutes = (elapsed % 3600) // 60
+        seconds = elapsed % 60
+
+        pop_max_scores.append(max_scores)
+
+        plt.plot(np.arange(len(max_scores)), max_scores, label="Max Score")
+        plt.plot(np.arange(len(avg_scores)), avg_scores, label="Avg Score")
         plt.xlabel("Generation")
         plt.ylabel("Accuracy")
-        plt.title("XOR Model Progression")
+        plt.suptitle("Montecarlo Dataset Model Progression")
+        plt.title(f"Inter-generational Surviving Population of {igsp}")
         plt.legend()
-        plt.savefig('xor_results.png')
-        plt.show()
+        plt.savefig(f'montecarlo_results_{igsp}.png')
+        plt.clf()
+
+        print(f"Elapsed time taken for {ITERATIONS} iterations of population size {POP_SIZE} ({igsp * POP_SIZE} of which reproduce) (HH:MM:SS): {hours:02g}:{minutes:02g}:{seconds}")
+        print("Breeding pool of final population:")
+        print("\n".join([str(a) for a in final_pop[:env.ecosystem._breed_thresh]]))
+        # free up RAM for next iteration (it will need it)
+        del env
+    
+    for igsp, scores in zip(igsp_sizes, pop_max_scores):
+        plt.plot(np.arange(len(scores)), scores, label=f"$N_{{IGSP}}={igsp}$")
+    plt.xlabel("Generation")
+    plt.ylabel("Accuracy")
+    plt.ylim((0,1))
+    plt.legend()
+    plt.title("Montecarlo Dataset Accuracy Across Generations")
+    plt.savefig("montecarlo_scores_IGSPs.png")
+    plt.clf()
+    
+    plt.plot(igsp_sizes, elapsed_times)
+    plt.xlabel("Population Size (log)")
+    plt.xscale('log')
+    plt.ylabel("Time taken (s)")
+    plt.title("Process Time as Population Increases")
+    plt.savefig(f"montecarlo_time_IGSP.png")
+    plt.show()

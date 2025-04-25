@@ -50,50 +50,80 @@ class SupervisedConvLayer(SupervisedLayer):
             kernel_size,
             n_kernels,
             padding=0,
+            padding_mode='zeros',
             stride=1,
             activation="relu",
         ):
         self.kernel_size = kernel_size
         self.n_kernels = n_kernels
         self.padding = padding
+        self.padding_mode = padding_mode
         self.stride = stride
-        # assumed that the input shape is either square or cube
-        # and that last value in input_shape corresponds to n_kernels in previous conv layer
-        # (or 1 if first conv layer)
+
+        # For 2d, assumed that the input shape takes the form of (C_in, H, W)
+        # and that C_out is defined by n_kernels as defined by:
+        # https://pytorch.org/docs/stable/generated/torch.nn.Conv2d.html
+        # (see other pages for other conv layers' output shapes)
+        # If on the input of the model, C_in should be 1
         multi_dim_input = isinstance(input_shape, Iterable)
-        W = input_shape[0] if multi_dim_input else input_shape
-        # based on stackoverflow answer: https://stackoverflow.com/questions/53580088/calculate-the-output-size-in-convolution-layer
-        out_size = ((W-kernel_size-(2*padding))/stride) + 1
+        multi_dim_kernel = isinstance(kernel_size, Iterable)
         n_dims = len(input_shape) - 1 if multi_dim_input else 1
-        output_shape = (*[out_size for _ in range(n_dims)], n_kernels)
-        super().__init__(input_shape, output_shape)
+        input_shape_tuple = input_shape if multi_dim_input else (1, input_shape)
+        kernel_shape = kernel_size if multi_dim_kernel else tuple(kernel_size for _ in range(n_dims))
+        padding_tuple = padding if isinstance(padding, Iterable) else tuple(padding for _ in range(n_dims))
+        stride_tuple = stride if isinstance(stride, Iterable) else tuple(stride for _ in range(n_dims))
+
         match n_dims:
             case 1:
                 l = nn.Conv1d(
-                    input_shape[0] if multi_dim_input else input_shape,
+                    input_shape_tuple[0],
                     n_kernels,
                     kernel_size,
                     stride=stride,
-                    padding=padding
+                    padding=padding,
+                    padding_mode=padding_mode
                 )
+                L_in = input_shape_tuple[0]
+                # Dilation is not used in this implementation, so the default value (1)
+                # is used
+                L_out = (L_in + (2*padding) - (kernel_shape[0] - 1) - 1) // stride
+                L_out += 1
+                output_shape = (n_kernels, L_out)
             case 2:
                 l = nn.Conv2d(
-                    input_shape[-1],
+                    input_shape[0],
                     n_kernels,
                     kernel_size,
                     stride=stride,
-                    padding=padding
+                    padding=padding,
+                    padding_mode=padding_mode
                 )
+                # C_in = input_shape_tuple[0]
+                H_in = input_shape_tuple[1]
+                W_in = input_shape_tuple[2]
+
+                H_out = ((H_in + (2*padding_tuple[0])-(kernel_shape[0]-1)-1) // stride_tuple[0]) + 1
+                W_out = ((W_in + (2*padding_tuple[1])-(kernel_shape[1]-1)-1) // stride_tuple[1]) + 1
+                output_shape = (n_kernels, H_out, W_out)
             case 3:
                 l = nn.Conv3d(
-                    input_shape[-1],
+                    input_shape[0],
                     n_kernels,
                     kernel_size,
                     stride=stride,
-                    padding=padding
+                    padding=padding,
+                    padding_mode=padding_mode
                 )
+                # C_in = input_shpae_tuple[0]
+
+                out_shape_list = [n_kernels]
+                for dim in range(n_dims):
+                    out_dim = ((input_shape_tuple[dim+1] + (2*padding) - (kernel_shape[dim] - 1) - 1) // stride_tuple[dim]) + 1
+                    out_shape_list.append(out_dim)
+                output_shape = tuple(out_shape_list)
             case _:
                 raise ValueError(f"{n_dims}-dimensional convolutional layer not supported.")
+        super().__init__(input_shape_tuple, output_shape)
         layers = [l]
         match activation:
             case "relu":
@@ -112,23 +142,47 @@ class SupervisedConvLayer(SupervisedLayer):
 
     @SupervisedLayer.input_shape.setter
     def input_shape(self, val):
-        super()._input_shape = val
+        multi_dim_input = isinstance(val, Iterable)
+        self._input_shape = val if multi_dim_input else (1, val)
+        
+        multi_dim_kernel = isinstance(self.kernel_size, Iterable)
+
+        n_dims = len(self.input_shape) - 1
+        # input_shape_tuple = self.input_shape if multi_dim_input else tuple([self.input_shape])
+        kernel_shape = (min(self.kernel_size[dim], self.input_shape[dim+1]) for dim in range(n_dims)) if multi_dim_kernel else tuple(min(self.kernel_size, self.input_shape[dim+1]) for dim in range(n_dims))
+        padding_tuple = self.padding if isinstance(self.padding, Iterable) else tuple(self.padding for _ in range(n_dims))
+        stride_tuple = self.stride if isinstance(self.stride, Iterable) else tuple(self.stride for _ in range(n_dims))
+
+        out_shape_list = [self.n_kernels]
+        for dim in range(n_dims):
+            out_dim = ((self.input_shape[dim+1] + (2*padding_tuple[dim]) - (kernel_shape[dim] - 1) - 1) // stride_tuple[dim]) + 1
+            out_shape_list.append(out_dim)
+        self.output_shape = tuple(out_shape_list)
+
         self._layers[0] = type(self._layers[0])(
-            self.input_shape[-1],
-            self.output_shape[-1],
-            self.kernel_size,
+            self.input_shape[0],
+            self.n_kernels,
+            kernel_shape,
             stride=self.stride,
-            padding=self.padding
+            padding=self.padding,
+            padding_mode=self.padding_mode
         )
         self._layer_sequence = nn.Sequential(*self._layers)
     
     def forward(self, X):
+        n_dims = len(self.input_shape) - 1
+        if n_dims == len(X.shape) - 1:
+            # we automatically added a channel to the input shape so the actual input doesn't have it
+            #                     N           C   dim_size for dim in X
+            X = torch.reshape(X, (X.shape[0], 1, *[i for i in X.shape[1:]]))
         return self._layer_sequence(X)
+    
+    def __str__(self):
+        return f"Conv(in={self.input_shape}, out={self.output_shape})"
 
 class SupervisedDenseLayer(SupervisedLayer):
     def __init__(self, input_shape, nodes_out, activation='relu'):
         super().__init__(input_shape, nodes_out)
-        self.flatten = isinstance(input_shape, Iterable) and len(input_shape) > 1
         match activation:
             case 'relu':
                 activation_layer = nn.ReLU()
@@ -147,6 +201,9 @@ class SupervisedDenseLayer(SupervisedLayer):
         ]
         self._sequential = nn.Sequential(*self._layers)
         self.flatten_layer = nn.Flatten()
+
+    def flatten(self):
+        return isinstance(self.input_shape, Iterable) and len(self.input_shape) > 1
     
     @SupervisedLayer.input_shape.setter
     def input_shape(self, val):
@@ -158,10 +215,13 @@ class SupervisedDenseLayer(SupervisedLayer):
         self._sequential = nn.Sequential(*self._layers)
     
     def forward(self, X):
-        if self.flatten:
+        if self.flatten():
             X = self.flatten_layer(X)
         y = self._sequential(X)
         return y
+    
+    def __str__(self):
+        return f"Dense(out={self.output_shape})"
 
 class AbstractLayer:
     def __init__(self, prior:"AbstractLayer", learning_rate:float, out_features:int, allowed_activations:list[str]=None, **kwargs):

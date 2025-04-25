@@ -4,6 +4,8 @@ import random
 import pickle
 import torch
 from torch import nn
+from torch.nn.utils import parameters_to_vector, vector_to_parameters
+from copy import copy, deepcopy
 
 from layers import (
     AbstractLayer,
@@ -14,7 +16,7 @@ from layers import (
     SkipConn,
     BatchNorm,
 )
-from models import SupervisedModel
+from models import SupervisedModel, acc_device
 
 from abc import abstractmethod
 import random
@@ -26,6 +28,7 @@ class Organism:
     def __init__(self, in_shape, n_outputs):
         self._input_shape = in_shape
         self._n_outputs = n_outputs
+        self.parent = None
 
     @abstractmethod
     def predict(self, state):
@@ -90,19 +93,20 @@ class NEATOrganism(Organism):
     }
 
     def __init__(self,
-                 input_shape,
-                 n_outputs,
-                 fine_change_prob=1,
-                 learning_rate=.1,
-                 add_rate=.1,
-                 del_rate=.1,
-                 model_file=None,
-                 output_activation='xelu',
-                 supervised=False,
-                 burn_in=5,
-                 loss='mse',
-                 X=None,
-                 y=None,
+                 input_shape: tuple|int,
+                 n_outputs: int,
+                 fine_change_prob: float=1,
+                 learning_rate: float=.1,
+                 add_rate: float=.1,
+                 del_rate: float=.1,
+                 model_file: str=None,
+                 output_activation: str='xelu',
+                 supervised: bool=False,
+                 burn_in: int=5,
+                 loss: str='mse',
+                 X: np.ndarray|torch.utils.data.DataLoader=None,
+                 y: np.ndarray|torch.utils.data.DataLoader=None,
+                 _copy: bool=False,
                  **constraints):
         """
         Initialize an organism for a Neuro-evolution by Augmented Topologies (NEAT) genetic algorithm.
@@ -155,7 +159,11 @@ class NEATOrganism(Organism):
         if model_file is not None:
             self.load(model_file)
             return
+        
         super().__init__(input_shape, n_outputs)
+
+        if _copy: # if being called by __copy__, let __copy__ do the work
+            return
         self._layers = []
         self._layer_options = []
         self._learning_rate = learning_rate
@@ -222,6 +230,7 @@ class NEATOrganism(Organism):
             ))
         else:
             self._model: nn.Module = SupervisedModel(input_shape, n_outputs, output_activation=output_activation)
+            self._model = self._model.to(torch.accelerator.current_accelerator())
             match loss:
                 case 'mse':
                     self._loss = nn.MSELoss()
@@ -229,11 +238,15 @@ class NEATOrganism(Organism):
                     self._loss = nn.CrossEntropyLoss()
                 case 'binary-cross-entropy':
                     self._loss = nn.BCELoss()
+            self._loss = self._loss.to(torch.accelerator.current_accelerator())
             self._optimizer = torch.optim.Adam(self._model.parameters(), lr=learning_rate)
-            self._dataloader = torch.utils.data.DataLoader(
-                torch.utils.data.TensorDataset(torch.from_numpy(X).float(), torch.from_numpy(y).float()),
-                batch_size=self._batch_size
-            )
+            if type(X) != torch.utils.data.DataLoader:
+                self._dataloader = torch.utils.data.DataLoader(
+                    torch.utils.data.TensorDataset(torch.from_numpy(X).float(), torch.from_numpy(y).float()),
+                    batch_size=self._batch_size
+                )
+            else:
+                self._dataloader = X
 
 
         # print("Organism initialized")
@@ -255,7 +268,7 @@ class NEATOrganism(Organism):
             return self._layers[-1](state)
         else:
             self._model.eval()
-            return self._model(torch.from_numpy(state).float())
+            return self._model(state)
     
     def mutate(self):
         """Make modifications to this organism in-place. It is the responsibility of the caller to call 
@@ -274,6 +287,7 @@ class NEATOrganism(Organism):
         if roll < self._del_rate and self._model.depth() >= 1:
             to_remove = random.randrange(0,self._model.depth(), 1)
             self._model.remove_layer(to_remove)
+            self._model.to(torch.accelerator.current_accelerator())
             self._optimizer = torch.optim.Adam(self._model.parameters(), lr=self._learning_rate)
             train_epoch_prob = 1 # always train an epoch
             epochs = self._burn_in
@@ -283,14 +297,8 @@ class NEATOrganism(Organism):
         if roll < self._add_rate:
             loc = random.randrange(0,self._model.depth()+1, 1)
             layer = random.choice(self._layer_options)
-            # print("Layer type selected:", layer)
-            # print("Previous layer output:", self._layers[loc-1].out_features)
-            # print("Next layer:", self._layers[loc])
             constraints = self._layer_constraints[self._layer_str_map[layer]]
             n_node_min, n_node_max = constraints['n_nodes'] if 'n_nodes' in constraints.keys() else (2,32)
-            # print(f"Min out_features: {n_node_min}\tMax out_features: {n_node_max}")
-                # print(n_node_max, self._layers[loc-1].out_features)
-                # DOES THIS WORK? TODO
             out_features = random.randint(n_node_min, n_node_max)
             self._model.add_layer(
                 layer,
@@ -299,6 +307,7 @@ class NEATOrganism(Organism):
                 activation=random.choice(self._layer_constraints['activations']).replace('x', 'r'),
                 kernel_size=3
             )
+            self._model.to(torch.accelerator.current_accelerator())
             self._optimizer = torch.optim.Adam(self._model.parameters(), lr=self._learning_rate)
             # always retrain after adding layer
             train_epoch_prob = 1
@@ -310,13 +319,32 @@ class NEATOrganism(Organism):
             self._model.train(True)
             for e in range(epochs):
                 for X, y in self._dataloader:
+                    if acc_device == 'cuda':
+                        X = X.cuda()
+                        y = y.cuda()
                     pred = self._model(X)
-                    loss = self._loss(pred, y.resize_((len(y), 1)))
+                    # if len(pred.shape) > 1 and pred.shape[1] != 1:
+                    #     if acc_device == 'cuda':
+                    #         pred = torch.argmax(pred, dim=1).float()
+                    #     else:
+                    #         pred = np.argmax(pred, dim=1)
+                    if type(self._loss) == nn.CrossEntropyLoss:
+                        loss = self._loss(pred, y.flatten())
+                    else:
+                        loss = self._loss(pred, torch.reshape(y, pred.shape))
 
                     loss.backward()
                     self._optimizer.step()
                     self._optimizer.zero_grad()
             self._model.train(False)
+        else:
+            # even if we didn't run the train step, children should
+            # be distinct from their parents
+            param_vector = parameters_to_vector(self._model.parameters())
+            n_params = len(param_vector)
+            noise = torch.distributions.Normal(0, 1).sample((n_params,)).to(torch.accelerator.current_accelerator())
+            param_vector.add(noise)
+            vector_to_parameters(param_vector, self._model.parameters())
     
     def _mutate_unsupervised(self):
         """
@@ -429,12 +457,44 @@ class NEATOrganism(Organism):
         c._layer_constraints = self._layer_constraints
         c._add_rate = self._add_rate
         return c
+    
+    def __copy__(self):
+        # use minmal constructor and override everything else directly
+        c = NEATOrganism(
+            self._input_shape,
+            self._n_outputs,
+            _copy=True
+        )
+        c._learning_rate = self._learning_rate
+        c._add_rate = self._add_rate
+        c._del_rate = self._del_rate
+        c.supervised = self.supervised
+        
+        c._batch_size = self._batch_size
+        c._fine_change_prob = self._fine_change_prob
+        c._layer_constraints = self._layer_constraints
+        c._layer_options = self._layer_options
+        if c.supervised:
+            c._model = deepcopy(self._model)
+            c._loss = deepcopy(self._loss)
+            c._optimizer = deepcopy(self._optimizer)
+            # shallow copy dataloader to avoid copying full dataset
+            # but keep independent batching across models
+            c._dataloader = copy(self._dataloader)
+            c._burn_in = self._burn_in
+            c.parent = self
+        else:
+            c._layers = deepcopy(self._layers)
+        return c
 
     def mate(self, other):
         raise NotImplementedError
     
     def __str__(self):
-        return "NEATOrganism::" + " -> ".join([str(l) for l in self._layers])
+        if not self.supervised:
+            return "NEATOrganism::" + " -> ".join([str(l) for l in self._layers])
+        else:
+            return "NEATOrganism::" + str(self._model)
 
 class RandomOrganism(Organism):
     def __init__(self, in_shape, n_outputs, output_range=(0,1)):
