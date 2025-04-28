@@ -9,7 +9,6 @@ import torch
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, precision_score, f1_score
 
-from organisms import Organism
 from ecosystem import Ecosystem
 
 def torch_accuracy(real: torch.Tensor, predicted: torch.Tensor):
@@ -57,6 +56,10 @@ class TabularEnvironment:
             self.y_train = y_train.to_numpy()
             self.X_val = X_val.to_numpy()
             self.y_val = y_val.to_numpy()
+        NEAT_config = ecosystem_config['NEAT'] if 'NEAT' in ecosystem_config.keys() else {}
+        NEAT_config['X'] = self.X_train
+        NEAT_config['y'] = self.y_train
+        ecosystem_config['NEAT'] = NEAT_config
         self.ecosystem = Ecosystem(X.shape[1], 1, **ecosystem_config)
         self.n_agents = self.ecosystem.pop_size
         match(score):

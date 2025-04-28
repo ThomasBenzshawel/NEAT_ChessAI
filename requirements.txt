@@ -1,0 +1,9 @@
+numpy
+pandas
+torch
+torchmetrics
+matplotlib
+scikit-learn
+torchvision
+graphviz
+filelock

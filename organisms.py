@@ -241,8 +241,10 @@ class NEATOrganism(Organism):
             self._loss = self._loss.to(torch.accelerator.current_accelerator())
             self._optimizer = torch.optim.Adam(self._model.parameters(), lr=learning_rate)
             if type(X) != torch.utils.data.DataLoader:
+                X_tensor = X if type(X) == torch.Tensor else torch.from_numpy(X).float()
+                y_tensor = y if type(y) == torch.Tensor else torch.from_numpy(y).float()
                 self._dataloader = torch.utils.data.DataLoader(
-                    torch.utils.data.TensorDataset(torch.from_numpy(X).float(), torch.from_numpy(y).float()),
+                    torch.utils.data.TensorDataset(X_tensor, y_tensor),
                     batch_size=self._batch_size
                 )
             else:
@@ -317,25 +319,28 @@ class NEATOrganism(Organism):
         roll = random.random()
         if roll < train_epoch_prob:
             self._model.train(True)
-            for e in range(epochs):
-                for X, y in self._dataloader:
-                    if acc_device == 'cuda':
-                        X = X.cuda()
-                        y = y.cuda()
-                    pred = self._model(X)
-                    # if len(pred.shape) > 1 and pred.shape[1] != 1:
-                    #     if acc_device == 'cuda':
-                    #         pred = torch.argmax(pred, dim=1).float()
-                    #     else:
-                    #         pred = np.argmax(pred, dim=1)
-                    if type(self._loss) == nn.CrossEntropyLoss:
-                        loss = self._loss(pred, y.flatten())
-                    else:
-                        loss = self._loss(pred, torch.reshape(y, pred.shape))
+            try:
+                for e in range(epochs):
+                    for X, y in self._dataloader:
+                        if acc_device == 'cuda':
+                            X = X.cuda()
+                            y = y.cuda()
+                        pred = self._model(X)
+                        # if len(pred.shape) > 1 and pred.shape[1] != 1:
+                        #     if acc_device == 'cuda':
+                        #         pred = torch.argmax(pred, dim=1).float()
+                        #     else:
+                        #         pred = np.argmax(pred, dim=1)
+                        if type(self._loss) == nn.CrossEntropyLoss:
+                            loss = self._loss(pred, y.flatten())
+                        else:
+                            loss = self._loss(pred, torch.reshape(y, pred.shape))
 
-                    loss.backward()
-                    self._optimizer.step()
-                    self._optimizer.zero_grad()
+                        loss.backward()
+                        self._optimizer.step()
+                        self._optimizer.zero_grad()
+            except Exception as e:
+                print(e)
             self._model.train(False)
         else:
             # even if we didn't run the train step, children should

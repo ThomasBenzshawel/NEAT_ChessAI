@@ -65,9 +65,9 @@ def traverse_tree(level: dict, d: Digraph, root: Node | None=None, memo=set()):
     for node, child_dict in level.items():
         traverse_tree(child_dict, d, root=node, memo=memo)
 
-def generate_genealogy(output_loc: str, population: list[NEATOrganism], best_agent=None, graph_attr={}):
-    d = Digraph(graph_attr=graph_attr)
+def generate_genealogy(name: str, population: list[NEATOrganism], best_agent=None, graph_attr={}):
+    d = Digraph(name=name, graph_attr=graph_attr)
     tree = get_tree(population=population, best_agent=best_agent)
     traverse_tree(tree, d)
-    d.save(output_loc)
-    d.render(output_loc, format='svg', view=False)
+    d.save(name)
+    d.render(name, format='svg', view=False)

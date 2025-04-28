@@ -76,7 +76,6 @@ class Ecosystem():
 
         def mutate_agent(i, agent):
             agent.mutate()
-            print(f"Completed mutation of agent {i}.")
 
         # begin with a diverse population
         with ThreadPoolExecutor(max_workers=5) as exec:
