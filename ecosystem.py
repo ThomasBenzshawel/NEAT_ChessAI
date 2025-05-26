@@ -23,8 +23,11 @@ class Ecosystem():
             mating: bool = False,
             test_eval: bool = False,
             use_elitism: bool = True,
+            n_workers=5,
             **organism_constraints
         ):
+        self.n_workers=n_workers
+        self.is_parallel = n_workers > 0
         # store list of allowable organism types (currently limited to random and NEAT)
         if org_types == None:
             self.org_types = copy(_orgs_list)
@@ -74,13 +77,17 @@ class Ecosystem():
         self.test_eval = test_eval
         self._poll_idx = 0
 
-        def mutate_agent(i, agent):
+        def mutate_agent(agent):
             agent.mutate()
 
         # begin with a diverse population
-        with ThreadPoolExecutor(max_workers=5) as exec:
+        if self.is_parallel:
+            with ThreadPoolExecutor(max_workers=n_workers) as exec:
+                for i, agent in enumerate(self.population):
+                    exec.submit(mutate_agent, agent)
+        else:
             for i, agent in enumerate(self.population):
-                exec.submit(mutate_agent, i, agent)
+                mutate_agent(agent)
 
     
     def poll_agent(self):
@@ -103,10 +110,10 @@ class Ecosystem():
         if self._poll_idx > self.pop_size:
             return np.array([]), np.array([])
         if type(n_agents) == int:
-            idx = np.arange(self._poll_idx, min(self.pop_size, self._poll_idx+n_agents))
+            idx = np.arange(self._poll_idx, min(self.pop_size-1, self._poll_idx+n_agents))
         elif type(n_agents) == float and 0 < n_agents < 1:
             n_agents = int(len(self.population) * n_agents)
-            idx = np.arange(self._poll_idx, min(self.pop_size, self._poll_idx+n_agents))
+            idx = np.arange(self._poll_idx, min(self.pop_size-1, self._poll_idx+n_agents))
         else:
             raise ValueError("Unrecognized value or type for number of agents to pull.")
         
@@ -134,14 +141,22 @@ class Ecosystem():
         
         # until size condition of new population is met, add children to new population
         # NOTE: mating is not currently supported
-        with ThreadPoolExecutor(max_workers=5) as executor:
+        if self.is_parallel:
+            with ThreadPoolExecutor(max_workers=self.n_workers) as executor:
+                parent_idx = 0
+                while len(new_pop) < self.pop_size:
+                    child: Organism = copy(breeding_pool[parent_idx])
+                    executor.submit(child.mutate)
+                    new_pop.append(child)
+                    parent_idx = (parent_idx + 1) % len(breeding_pool)
+                executor.shutdown(wait=True)
+        else:
             parent_idx = 0
             while len(new_pop) < self.pop_size:
                 child: Organism = copy(breeding_pool[parent_idx])
-                executor.submit(child.mutate)
+                child.mutate()
                 new_pop.append(child)
-                parent_idx = (parent_idx + 1) % len(breeding_pool)
-            executor.shutdown(wait=True)
+                parent_idx = (parent_idx+1) % len(breeding_pool)
         
         # To fully kill off unused agents and to make sure it is garbage-collected,
         # explicitly delete them

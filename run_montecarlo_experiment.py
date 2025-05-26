@@ -109,7 +109,7 @@ ITERATIONS = 10
 # because a round of mutations happens in the constructor, include construction time
 # in performance time
 start = time.perf_counter()
-env = TabularEnvironment(TRAIN_CSV, feature_cols, 'y', val=.2, ecosystem_config=eco_config)
+env = TabularEnvironment(TRAIN_CSV, feature_cols, 'y', val=.2, ecosystem_config=eco_config, is_classification=True, n_workers=5)
 max_scores, avg_scores, final_pop = env.run(ITERATIONS, batch_size=25)
 end = time.perf_counter()
 
@@ -171,11 +171,11 @@ while attempts < 3 and not success:
         print(f"Another process is currently writing to the file. Attempt #{attempts}")
 
 # generate genealogy of top 10 agents
-generate_genealogy(
-    f"montecarlo_genealogy_{EXPERIMENT_ID}",
-    final_pop[:10],
-    graph_attr={
-        'label': f"Genealogy of Top {env.ecosystem._breed_thresh} Agents",
-        'labelloc': 'top'
-    }
-)
+# generate_genealogy(
+#     f"montecarlo_genealogy_{EXPERIMENT_ID}",
+#     final_pop[:10],
+#     graph_attr={
+#         'label': f"Genealogy of Top {env.ecosystem._breed_thresh} Agents",
+#         'labelloc': 'top'
+#     }
+# )

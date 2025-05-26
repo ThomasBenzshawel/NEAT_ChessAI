@@ -96,7 +96,7 @@ pred = torch.cat(pred, dim=0)
 y_test = torch.cat(y_test, dim=0).flatten()
 
 # n_correct = ((pred > .5).int() == y_test.cuda()).sum()
-accuracy = n_correct / y_test.shape[0]
+acc = n_correct / y_test.shape[0]
 
 average_precision = MulticlassAveragePrecision(num_classes=10)
 ap_score = average_precision(pred, y_test.int()).item()
@@ -108,7 +108,7 @@ data = [
     del_rate,
     inter_generational_surviving_percentage,
     elapsed,
-    accuracy,
+    acc,
     ap_score,
     str(best_model)
 ]

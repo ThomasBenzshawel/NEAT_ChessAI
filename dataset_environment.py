@@ -26,10 +26,12 @@ class TabularEnvironment:
             score='accuracy',
             is_classification=False,
             positive_thresh=.5,
-            ecosystem_config: dict={}
+            ecosystem_config: dict={},
+            n_workers=5
     ):
         self.is_classification = is_classification
         self.positive_thresh = positive_thresh
+        self.n_workers = n_workers
         data = pd.read_csv(dataset_path)
         self.bootstrap = 'NEAT' in ecosystem_config.keys() and 'supervised' in ecosystem_config['NEAT'].keys() and ecosystem_config['NEAT']['supervised']
         X = data.filter(items=x_cols)
@@ -60,7 +62,7 @@ class TabularEnvironment:
         NEAT_config['X'] = self.X_train
         NEAT_config['y'] = self.y_train
         ecosystem_config['NEAT'] = NEAT_config
-        self.ecosystem = Ecosystem(X.shape[1], 1, **ecosystem_config)
+        self.ecosystem = Ecosystem(X.shape[1], 1, n_workers=n_workers, **ecosystem_config)
         self.n_agents = self.ecosystem.pop_size
         match(score):
             case 'accuracy':
@@ -94,9 +96,13 @@ class TabularEnvironment:
 
             batch_idx, batch = self.ecosystem.poll_agents(batch_size)
             while batch.size != 0:
-                with ThreadPoolExecutor(max_workers=5) as executor:
+                if self.n_workers > 0:
+                    with ThreadPoolExecutor(max_workers=self.n_workers) as executor:
+                        for i, agent in zip(batch_idx, batch):
+                            executor.submit(run_agent, agent, i)
+                else:
                     for i, agent in zip(batch_idx, batch):
-                        executor.submit(run_agent, agent, i)
+                        run_agent(agent, i)
                 batch_idx, batch = self.ecosystem.poll_agents(batch_size)
             return scores
         
